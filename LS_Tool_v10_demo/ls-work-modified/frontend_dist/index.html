@@ -1,0 +1,2320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Logistics System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#181c27;--bg3:#1f2435;--bg4:#252c3f;
+  --border:#2e3650;--border2:#3a4560;
+  --txt:#e8eaf0;--txt2:#9aa3bc;--txt3:#5a6480;
+  --accent:#4f9cf9;--accent2:#3b7fd4;--accent-dim:#1a3a6b;
+  --green:#3ecf8e;--green-dim:#0d3d26;
+  --amber:#f5a623;--amber-dim:#3d2a08;
+  --red:#f06565;--red-dim:#3d1212;
+  --purple:#a78bfa;--purple-dim:#2d1f5e;
+  --radius:8px;--radius-lg:12px;
+  --font:'Sora',sans-serif;--mono:'IBM Plex Mono',monospace;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--txt);min-height:100vh;font-size:14px;line-height:1.6}
+a{color:var(--accent);text-decoration:none}
+
+/* Layout */
+#app{display:flex;min-height:100vh}
+#sidebar{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;position:sticky;top:0;height:100vh;overflow-y:auto}
+#main{flex:1;overflow-x:hidden;min-width:0}
+
+/* Sidebar */
+.sidebar-logo{padding:20px 18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.sidebar-logo .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.sidebar-logo .logo-text{font-size:13px;font-weight:600;color:var(--txt);letter-spacing:.02em}
+.sidebar-logo .logo-sub{font-size:11px;color:var(--txt3)}
+.nav-section{padding:12px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--txt3)}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 14px;margin:1px 8px;border-radius:var(--radius);cursor:pointer;transition:.15s;color:var(--txt2);font-size:13px;font-weight:500}
+.nav-item:hover{background:var(--bg3);color:var(--txt)}
+.nav-item.active{background:var(--accent-dim);color:var(--accent)}
+.nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.8}
+.nav-item.active svg{opacity:1}
+.sidebar-footer{margin-top:auto;padding:12px 10px;border-top:1px solid var(--border)}
+.user-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius);background:var(--bg3)}
+.user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--accent);flex-shrink:0}
+.user-name{font-size:12px;font-weight:500;color:var(--txt)}
+.user-role{font-size:10px;color:var(--txt3)}
+
+/* Top bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:10}
+.topbar h1{font-size:18px;font-weight:600;color:var(--txt)}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:.15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent2)}
+.btn-ghost{background:transparent;color:var(--txt2);border:1px solid var(--border)}.btn-ghost:hover{background:var(--bg3);color:var(--txt)}
+.btn-danger{background:var(--red-dim);color:var(--red);border:1px solid transparent}.btn-danger:hover{background:#5c1c1c}
+.btn-success{background:var(--green-dim);color:var(--green);border:1px solid transparent}.btn-success:hover{background:#164d33}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn svg{width:14px;height:14px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* Page content */
+.page{padding:24px 28px;display:none}
+.page.active{display:block}
+
+/* Cards */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+.card-sm{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+
+/* Stats row */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px}
+.stat-label{font-size:11px;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.stat-value{font-size:22px;font-weight:600;color:var(--txt);font-family:var(--mono)}
+.stat-value.green{color:var(--green)}.stat-value.amber{color:var(--amber)}.stat-value.red{color:var(--red)}.stat-value.accent{color:var(--accent)}
+
+/* Tables */
+.table-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse}
+th{background:var(--bg3);color:var(--txt3);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:10px 14px;text-align:left;white-space:nowrap}
+td{padding:11px 14px;border-top:1px solid var(--border);color:var(--txt2);font-size:13px;vertical-align:middle}
+tr:hover td{background:var(--bg3);color:var(--txt)}
+td .mono{font-family:var(--mono);font-size:12px}
+.td-actions{display:flex;gap:6px;justify-content:flex-end}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.03em}
+.badge-green{background:var(--green-dim);color:var(--green)}
+.badge-amber{background:var(--amber-dim);color:var(--amber)}
+.badge-red{background:var(--red-dim);color:var(--red)}
+.badge-blue{background:var(--accent-dim);color:var(--accent)}
+.badge-purple{background:var(--purple-dim);color:var(--purple)}
+.badge-gray{background:var(--bg4);color:var(--txt3)}
+
+/* Forms */
+.form-grid{display:grid;gap:14px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-group label{font-size:12px;font-weight:500;color:var(--txt3)}
+input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--txt);font-family:var(--font);font-size:13px;padding:8px 10px;width:100%;transition:.15s;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,156,249,.15)}
+input[type=checkbox]{width:auto;accent-color:var(--accent)}
+textarea{resize:vertical;min-height:70px}
+select option{background:var(--bg3)}
+.form-hint{font-size:11px;color:var(--txt3);margin-top:2px}
+.separator{border:none;border-top:1px solid var(--border);margin:18px 0}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.hidden{display:none}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-lg);width:100%;max-width:640px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.modal-lg{max-width:800px}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.modal-header h2{font-size:16px;font-weight:600;color:var(--txt)}
+.modal-body{padding:22px}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+
+/* Pricing breakdown box */
+.pricing-box{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-top:12px}
+.pricing-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:13px}
+.pricing-row.total{border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-weight:600;color:var(--txt);font-size:14px}
+.pricing-row.discount{color:var(--green)}
+.pricing-row .label{color:var(--txt2)}
+.pricing-row.total .label{color:var(--txt)}
+.pricing-row .val{font-family:var(--mono)}
+.custom-price-badge{background:var(--amber-dim);color:var(--amber);font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;font-weight:600}
+
+/* Order items table inside modal */
+.items-table{width:100%;border-collapse:collapse;margin-top:8px}
+.items-table th{font-size:11px;color:var(--txt3);text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+.items-table td{padding:8px;border-bottom:1px solid var(--border);font-size:12px;color:var(--txt2)}
+.items-table tr:last-child td{border-bottom:none}
+
+/* Alert */
+.alert{padding:10px 14px;border-radius:var(--radius);font-size:13px;margin-bottom:14px}
+.alert-error{background:var(--red-dim);color:var(--red);border:1px solid rgba(240,101,101,.2)}
+.alert-success{background:var(--green-dim);color:var(--green);border:1px solid rgba(62,207,142,.2)}
+
+/* Filter bar */
+.filter-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.filter-bar input,.filter-bar select{width:auto;flex:1;min-width:140px;max-width:220px}
+
+/* Login */
+#login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.login-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px;width:360px}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+.login-logo-icon{width:36px;height:36px;background:var(--accent);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.login-logo-text{font-size:16px;font-weight:600}
+.login-subtitle{font-size:13px;color:var(--txt3);margin-bottom:20px}
+
+/* Empty state */
+.empty{text-align:center;padding:48px;color:var(--txt3)}
+.empty svg{width:36px;height:36px;opacity:.3;margin:0 auto 12px}
+.empty p{font-size:14px}
+
+/* Section header */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-title{font-size:15px;font-weight:600;color:var(--txt)}
+
+/* Tabs */
+.tabs{display:flex;gap:2px;background:var(--bg3);padding:3px;border-radius:var(--radius);margin-bottom:20px;width:fit-content}
+.tab{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;color:var(--txt3);transition:.15s}
+.tab.active{background:var(--bg2);color:var(--txt);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.tab:hover:not(.active){color:var(--txt)}
+
+/* Spinner */
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+
+/* Address lookup */
+.addr-wrap{position:relative}
+.addr-lookup-row{display:flex;gap:6px;align-items:flex-start}
+.addr-lookup-row textarea,.addr-lookup-row input{flex:1}
+.addr-lookup-btn{flex-shrink:0;margin-top:0;height:36px;padding:0 10px;font-size:12px;white-space:nowrap}
+.addr-suggestions{position:absolute;top:100%;left:0;right:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);z-index:200;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
+.addr-suggestion{padding:8px 12px;cursor:pointer;font-size:12px;color:var(--txt2);border-bottom:1px solid var(--border)}
+.addr-suggestion:hover{background:var(--bg4);color:var(--txt)}
+.addr-suggestion:last-child{border-bottom:none}
+/* Delivery type badges */
+.badge-hardware{background:#2d1a5e;color:#c4b5fd}
+.badge-customer-del{background:var(--green-dim);color:var(--green)}
+/* Laybuy installment */
+.inst-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.inst-row:last-child{border-bottom:none}
+.inst-num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;background:var(--bg4);color:var(--txt3)}
+.inst-num.paid{background:var(--green-dim);color:var(--green)}
+.inst-details{flex:1}
+.inst-due{font-size:11px;color:var(--txt3)}
+
+/* Collapsible section */
+.collapsible-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--txt3);font-size:12px;font-weight:500;padding:6px 0;user-select:none}
+.collapsible-toggle:hover{color:var(--txt)}
+.collapsible-toggle svg{width:12px;height:12px;transition:.2s;flex-shrink:0}
+.collapsible-toggle.open svg{transform:rotate(90deg)}
+.collapsible-content{display:none}.collapsible-content.open{display:block}
+
+/* Toasts */
+#toast-wrap{position:fixed;bottom:20px;right:20px;z-index:500;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.toast{background:var(--bg3);border:1px solid var(--border2);border-left:3px solid var(--accent);border-radius:var(--radius);padding:11px 16px;font-size:13px;color:var(--txt);box-shadow:0 8px 24px rgba(0,0,0,.5);opacity:0;transform:translateY(8px);transition:.25s}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast-success{border-left-color:var(--green)}
+.toast-error{border-left-color:var(--red)}
+
+/* Price tier chips on the Products page */
+.tier-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;margin:2px;font-family:var(--mono);cursor:pointer;transition:.15s;color:var(--txt2)}
+.tier-chip:hover{border-color:var(--accent);color:var(--txt);background:var(--bg4)}
+.tier-chip .tc-price{color:var(--accent);font-weight:600}
+.product-inactive td{opacity:.45}
+
+/* Responsive: collapse sidebar to icons on narrow screens */
+@media(max-width:860px){
+  #sidebar{width:60px;min-width:60px}
+  #sidebar .logo-text,#sidebar .logo-sub,#sidebar .nav-section,#sidebar .user-name,#sidebar .user-role{display:none}
+  #sidebar .nav-item{justify-content:center;padding:10px}
+  #sidebar .nav-item svg{width:18px;height:18px}
+  .sidebar-logo{justify-content:center;padding:16px 8px}
+  .user-chip{flex-direction:column;gap:6px;padding:8px 4px}
+  .user-chip .btn{margin-left:0!important}
+  .form-row,.form-row-3{grid-template-columns:1fr}
+  .topbar{padding:12px 16px;flex-wrap:wrap;gap:8px}
+  .page>div[style*="padding"]{padding:16px!important}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">🚛</div>
+      <div class="login-logo-text">Logistics System</div>
+    </div>
+    <div class="login-subtitle">Sign in to your account</div>
+    <div id="login-error" class="alert alert-error" style="display:none"></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Username</label><input id="li-user" placeholder="admin" autocomplete="username"/></div>
+      <div class="form-group"><label>Password</label><input id="li-pass" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
+      <button class="btn btn-primary" id="li-btn" style="width:100%;justify-content:center">Sign in</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🚛</div>
+      <div><div class="logo-text">Logistics</div><div class="logo-sub">Internal System</div></div>
+    </div>
+    <div class="nav-section">Main</div>
+    <div class="nav-item active" data-page="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item" data-page="orders">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+      Orders
+    </div>
+    <div class="nav-item" data-page="customers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+      Customers
+    </div>
+    <div class="nav-item" data-page="stores">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l1-5h16l1 5M4 9v11a1 1 0 001 1h14a1 1 0 001-1V9M9 21v-6h6v6"/></svg>
+      Store Accounts
+    </div>
+    <div class="nav-item" data-page="tlb">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8zM5 18a2 2 0 100 4 2 2 0 000-4zM18 18a2 2 0 100 4 2 2 0 000-4z"/></svg>
+      TLB Bookings
+    </div>
+    <div class="nav-item" data-page="deliveries">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Deliveries
+    </div>
+    <div class="nav-item" data-page="laybuys">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h4M7 12h2"/><path d="M15 8l-2 4 2 4"/></svg>
+      Lay-buy
+    </div>
+    <div class="nav-section">Finance</div>
+    <div class="nav-item" data-page="payments">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      Payments
+    </div>
+    <div class="nav-item" data-page="gl">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+      General Ledger
+    </div>
+    <div class="nav-section">Catalogue</div>
+    <div class="nav-item" data-page="products">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+      Products
+    </div>
+    <div class="nav-section">Analysis</div>
+    <div class="nav-item" data-page="best-customers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+      Best Customers
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div><div class="user-name" id="user-name">Loading...</div><div class="user-role" id="user-role-label"></div></div>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:4px 8px" onclick="logout()" title="Sign out">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div id="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="topbar"><h1>Dashboard</h1><div class="topbar-actions">
+        <button class="btn btn-ghost btn-sm" onclick="downloadReport(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Export Excel
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="stats-row" id="dash-stats"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="card"><div class="section-header"><span class="section-title">Recent Orders</span></div><div id="dash-orders"></div></div>
+          <div class="card"><div class="section-header"><span class="section-title">Recent TLB Bookings</span></div><div id="dash-tlb"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ORDERS -->
+    <div class="page" id="page-orders">
+      <div class="topbar"><h1>Orders</h1><div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewOrder()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Order
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="filter-bar">
+          <input id="order-search" placeholder="Search orders..." oninput="filterOrders()" style="max-width:240px"/>
+          <select id="order-status-filter" onchange="filterOrders()">
+            <option value="">All statuses</option>
+            <option value="quote">Quote</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="dispatched">Dispatched</option>
+            <option value="delivered">Delivered</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Order #</th><th>Customer</th><th>Delivery Address</th><th>Date</th><th>Status</th><th>Subtotal</th><th>Transport</th><th>Discount</th><th>Total</th><th>Balance</th><th></th></tr></thead>
+          <tbody id="orders-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- CUSTOMERS -->
+    <div class="page" id="page-customers">
+      <div class="topbar"><h1>Customers</h1><div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewCustomer()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Customer
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="filter-bar"><input id="cust-search" placeholder="Search customers..." oninput="filterCustomers()" style="max-width:260px"/></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Address</th><th></th></tr></thead>
+          <tbody id="customers-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- STORE ACCOUNTS -->
+    <div class="page" id="page-stores">
+      <div class="topbar"><h1>Store Accounts</h1><div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openStorePayment()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>Account Payment
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div id="stores-rev-cards" class="form-row-3" style="margin-bottom:18px;display:none">
+          <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Hardware Revenue · This Month</div>
+            <div class="mono" style="font-size:18px;font-weight:700;margin-top:4px;color:var(--accent)" id="rev-hw-month">–</div>
+            <div style="font-size:11px;color:var(--txt3);margin-top:2px" id="rev-hw-month-sub"></div></div>
+          <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Hardware Revenue · Last Month</div>
+            <div class="mono" style="font-size:18px;font-weight:600;margin-top:4px" id="rev-hw-lastmonth">–</div>
+            <div style="font-size:11px;color:var(--txt3);margin-top:2px" id="rev-hw-lastmonth-sub"></div></div>
+          <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Hardware Revenue · This Year</div>
+            <div class="mono" style="font-size:18px;font-weight:600;margin-top:4px" id="rev-hw-ytd">–</div>
+            <div style="font-size:11px;color:var(--txt3);margin-top:2px" id="rev-hw-ytd-sub"></div></div>
+        </div>
+        <div id="stores-trend" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:600;color:var(--txt)">Monthly Revenue — Hardware vs Direct <span style="font-weight:400;color:var(--txt3)">(last 12 months)</span></div>
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--txt3)">
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent);margin-right:5px;vertical-align:-1px"></span>Hardware</span>
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--bg4);border:1px solid var(--border2);margin-right:5px;vertical-align:-1px"></span>Direct</span>
+            </div>
+          </div>
+          <div id="stores-trend-rows"></div>
+        </div>
+        <div id="stores-empty" class="alert" style="display:none;background:var(--bg3);color:var(--txt3);border:1px solid var(--border)">
+          No hardware stores yet. Edit a customer and set their type to <strong>Hardware Store</strong> — their orders and balance will appear here automatically.
+        </div>
+        <div id="stores-unlinked" class="alert" style="display:none;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(245,166,35,.3);align-items:center;gap:12px">
+          <span id="stores-unlinked-msg" style="flex:1"></span>
+          <button class="btn btn-primary btn-sm" onclick="importStoreNames()" style="flex-shrink:0">Create store accounts</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Store</th><th>Open Orders</th><th>Invoiced</th><th>Paid</th><th>Owes Us</th><th>Oldest Unpaid</th><th>Last Payment</th><th></th></tr></thead>
+          <tbody id="stores-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- TLB -->
+    <div class="page" id="page-tlb">
+      <div class="topbar"><h1>TLB Bookings</h1><div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewTLB()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="table-wrap"><table>
+          <thead><tr><th>ID</th><th>Customer</th><th>Date</th><th>Type</th><th>Hours</th><th>Rate</th><th>Transport</th><th>Diesel</th><th>Total</th><th>Balance</th><th></th></tr></thead>
+          <tbody id="tlb-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- DELIVERIES -->
+    <div class="page" id="page-deliveries">
+      <div class="topbar"><h1>Deliveries</h1><div class="topbar-actions">
+        <select id="del-type-filter" onchange="loadDeliveries()" style="width:auto;font-size:13px">
+          <option value="">All types</option>
+          <option value="customer">Customer</option>
+          <option value="hardware">Hardware</option>
+        </select>
+        <button class="btn btn-primary" onclick="openNewDelivery()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Schedule Delivery
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="stats-row" id="del-stats" style="margin-bottom:16px"></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Order #</th><th>Customer</th><th>Type</th><th>Hardware Store</th><th>Scheduled</th><th>Actual</th><th>Driver</th><th>Vehicle</th><th>Status</th><th>Live Link</th><th></th></tr></thead>
+          <tbody id="deliveries-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+
+    <!-- LAYBUYS -->
+    <div class="page" id="page-laybuys">
+      <div class="topbar"><h1>Lay-buys</h1><div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewLaybuy()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Lay-buy
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="stats-row" id="lb-stats" style="margin-bottom:16px"></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>ID</th><th>Order #</th><th>Customer</th><th>Start</th><th>Months</th><th>Installment</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+          <tbody id="laybuys-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+    <!-- PAYMENTS -->
+    <div class="page" id="page-payments">
+      <div class="topbar"><h1>Payments</h1><div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewPayment()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Record Payment
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="table-wrap"><table>
+          <thead><tr><th>ID</th><th>Order / TLB</th><th>Amount</th><th>Date</th><th>Method</th><th>Reference</th></tr></thead>
+          <tbody id="payments-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- GL -->
+    <div class="page" id="page-gl">
+      <div class="topbar"><h1>General Ledger</h1></div>
+      <div style="padding:24px 28px">
+        <div class="tabs">
+          <div class="tab active" onclick="showGLTab('journal',this)">Journal</div>
+          <div class="tab" onclick="showGLTab('trial',this)">Trial Balance</div>
+          <div class="tab" onclick="showGLTab('pl',this)">Profit & Loss</div>
+          <div class="tab" onclick="showGLTab('aging',this)">AR Aging</div>
+        </div>
+        <div id="gl-journal"><div class="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Ref</th><th>Account</th><th>Description</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead>
+          <tbody id="journal-tbody"></tbody>
+        </table></div></div>
+        <div id="gl-trial" style="display:none"></div>
+        <div id="gl-pl" style="display:none"></div>
+        <div id="gl-aging" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- PRODUCTS -->
+    <div class="page" id="page-products">
+      <div class="topbar"><h1>Products & Pricing</h1><div class="topbar-actions">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt3);cursor:pointer">
+          <input type="checkbox" id="prod-show-inactive" onchange="loadProducts()"/> Show inactive
+        </label>
+        <button class="btn btn-primary" id="new-product-btn" onclick="openNewProduct()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Product
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div id="prod-admin-hint" class="alert" style="display:none;background:var(--bg3);color:var(--txt3);border:1px solid var(--border)">Prices and products can only be changed by an admin user.</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Product</th><th>Category</th><th>Unit</th><th>Price Tiers <span style="font-weight:400;text-transform:none;letter-spacing:0">(click a tier to edit its price)</span></th><th></th></tr></thead>
+          <tbody id="products-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- BEST CUSTOMERS -->
+    <div class="page" id="page-best-customers">
+      <div class="topbar"><h1>Best Customers</h1><div class="topbar-actions">
+        <select id="bc-limit" onchange="loadBestCustomers()" style="font-size:13px;padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg2);color:var(--txt)">
+          <option value="10">Top 10</option>
+          <option value="20" selected>Top 20</option>
+          <option value="50">Top 50</option>
+          <option value="100">All Customers</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="downloadReport(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Export Excel
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <!-- Podium Cards -->
+        <div id="bc-podium" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px"></div>
+        <!-- Stats row -->
+        <div class="stats-row" id="bc-stats" style="margin-bottom:20px"></div>
+        <!-- Table -->
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table>
+            <thead><tr>
+              <th>Rank</th><th>Customer</th><th>Revenue</th><th>Rev Share</th>
+              <th>Orders</th><th>Avg Order</th><th>Orders/Mo</th>
+              <th>Last Order</th><th>Days Since</th><th>Status</th>
+            </tr></thead>
+            <tbody id="bc-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- ========== MODALS ========== -->
+
+<!-- New Order Modal -->
+<div class="modal-overlay hidden" id="modal-order">
+  <div class="modal modal-lg">
+    <div class="modal-header"><h2 id="order-modal-title">New Order</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-order')">✕</button></div>
+    <div class="modal-body">
+      <div id="order-modal-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Customer *</label>
+          <select id="o-customer"><option value="">Select customer...</option></select></div>
+        <div class="form-group"><label>Order Date *</label><input type="date" id="o-date"/></div>
+      </div>
+      <div class="form-group addr-wrap" style="margin-top:10px"><label>Delivery Address</label>
+        <div class="addr-lookup-row"><input id="o-address" placeholder="Start typing then click Lookup..."/><button class="btn btn-ghost addr-lookup-btn" type="button" onclick="lookupAddress('o-address','o-addr-drop')">🔍 Lookup</button></div>
+        <div id="o-addr-drop" class="addr-suggestions"></div>
+      </div>
+      <div class="form-group" style="margin-top:10px"><label>Notes</label><textarea id="o-notes" rows="2"></textarea></div>
+
+      <div class="separator"></div>
+      <div class="section-title" style="margin-bottom:12px">Add Items</div>
+      <div class="form-row">
+        <div class="form-group"><label>Product</label>
+          <select id="o-product" onchange="onProductChange()"><option value="">Select product...</option></select></div>
+        <div class="form-group"><label>Price Tier</label>
+          <select id="o-tier" onchange="onTierChange()"><option value="">Select tier...</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Quantity</label><input type="number" id="o-qty" min="1" value="1" oninput="onTierChange()"/></div>
+        <div class="form-group"><label>Unit Price (ZAR) <span style="color:var(--amber);font-size:10px">leave blank to use tier price</span></label>
+          <input type="number" id="o-custom-price" placeholder="Custom override..." step="0.01" oninput="onTierChange()"/></div>
+      </div>
+      <div class="form-group"><label>Custom Price Reason</label><input id="o-custom-reason" placeholder="e.g. Loyal customer deal"/></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+        <div id="o-tier-preview" style="font-size:12px;color:var(--txt3)"></div>
+        <button class="btn btn-success btn-sm" onclick="addItemToOrder()" style="margin-left:auto">+ Add Item</button>
+      </div>
+
+      <!-- Items list -->
+      <div style="margin-top:12px" id="o-items-wrap">
+        <table class="items-table" id="o-items-table">
+          <thead><tr><th>Product</th><th>Tier</th><th>Qty</th><th>Unit Price</th><th>Line Total</th><th></th></tr></thead>
+          <tbody id="o-items-body"></tbody>
+        </table>
+      </div>
+
+      <div class="separator"></div>
+      <div class="section-title" style="margin-bottom:12px">
+        <div class="collapsible-toggle" onclick="toggleCollapsible('pricing-section',this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          Pricing Adjustments (Discounts & Transport)
+        </div>
+      </div>
+      <div id="pricing-section" class="collapsible-content">
+        <div class="form-row">
+          <div class="form-group"><label>Transport Price (ZAR)</label><input type="number" id="o-transport" placeholder="0.00" step="0.01" oninput="updateOrderPreview()"/></div>
+          <div class="form-group"><label>Transport Notes</label><input id="o-transport-notes" placeholder="e.g. Long distance surcharge"/></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Discount % <span style="font-size:10px;color:var(--txt3)">(applied first)</span></label>
+            <input type="number" id="o-disc-pct" placeholder="0" min="0" max="100" step="0.1" oninput="updateOrderPreview()"/></div>
+          <div class="form-group"><label>Flat Discount (ZAR) <span style="font-size:10px;color:var(--txt3)">(applied after %)</span></label>
+            <input type="number" id="o-disc-amt" placeholder="0.00" step="0.01" oninput="updateOrderPreview()"/></div>
+        </div>
+        <div class="form-group"><label>Discount Reason</label><input id="o-disc-reason" placeholder="e.g. Loyal customer, bulk deal"/></div>
+      </div>
+
+      <!-- Live pricing summary -->
+      <div class="pricing-box" id="o-pricing-preview">
+        <div class="pricing-row"><span class="label">Items subtotal</span><span class="val" id="prev-subtotal">R0.00</span></div>
+        <div class="pricing-row" id="prev-transport-row" style="display:none"><span class="label">Transport</span><span class="val" id="prev-transport">R0.00</span></div>
+        <div class="pricing-row discount" id="prev-disc-pct-row" style="display:none"><span class="label">Discount %</span><span class="val" id="prev-disc-pct">–R0.00</span></div>
+        <div class="pricing-row discount" id="prev-disc-amt-row" style="display:none"><span class="label">Flat discount</span><span class="val" id="prev-disc-amt">–R0.00</span></div>
+        <div class="pricing-row total"><span class="label">Total</span><span class="val" id="prev-total">R0.00</span></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-order')">Cancel</button>
+      <button class="btn btn-primary" id="save-order-btn" onclick="saveOrder()">Create Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- View/Edit Order Modal -->
+<div class="modal-overlay hidden" id="modal-order-view">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div><h2 id="ov-title">Order</h2><div style="font-size:12px;color:var(--txt3);margin-top:2px" id="ov-subtitle"></div></div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-order-view')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="ov-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- New Customer Modal -->
+<div class="modal-overlay hidden" id="modal-customer">
+  <div class="modal">
+    <div class="modal-header"><h2 id="cust-modal-title">New Customer</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-customer')">✕</button></div>
+    <div class="modal-body">
+      <div id="cust-error" class="alert alert-error" style="display:none"></div>
+      <div id="cust-dupe-warn" class="alert" style="display:none;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(245,166,35,.3)"></div>
+      <div class="form-grid">
+        <div class="form-row">
+          <div class="form-group"><label>Name *</label><input id="c-name" placeholder="Full name" oninput="checkDuplicateCustomer()"/></div>
+          <div class="form-group"><label>Type</label>
+            <select id="c-type"><option value="individual">Individual</option><option value="hardware_store">Hardware Store (on account)</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Phone</label><input id="c-phone" placeholder="+27..."/></div>
+          <div class="form-group"><label>Email</label><input id="c-email" type="email"/></div>
+        </div>
+        <div class="form-group addr-wrap"><label>Address</label>
+          <div class="addr-lookup-row"><textarea id="c-address" rows="2" placeholder="Start typing then click Lookup..."></textarea><button class="btn btn-ghost addr-lookup-btn" type="button" onclick="lookupAddress('c-address','c-addr-drop')">🔍 Lookup</button></div>
+          <div id="c-addr-drop" class="addr-suggestions"></div>
+        </div>
+        <div class="form-group"><label>Notes</label><textarea id="c-notes" rows="2"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-customer')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCustomer()">Save Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- New TLB Modal -->
+<div class="modal-overlay hidden" id="modal-tlb">
+  <div class="modal modal-lg">
+    <div class="modal-header"><h2>New TLB Booking</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-tlb')">✕</button></div>
+    <div class="modal-body">
+      <div id="tlb-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Customer *</label><select id="t-customer"><option value="">Select...</option></select></div>
+        <div class="form-group"><label>Booking Date *</label><input type="date" id="t-date"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Rate Type</label>
+          <select id="t-rate-type" onchange="onTLBRateChange()">
+            <option value="hourly">Hourly (min 3hrs)</option>
+            <option value="daily">Daily</option>
+          </select></div>
+        <div class="form-group"><label>Hours Billed</label><input type="number" id="t-hours" min="1" value="4" oninput="updateTLBPreview()"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Custom Hourly Rate (ZAR) <span style="font-size:10px;color:var(--txt3)">default R1,000/hr</span></label>
+          <input type="number" id="t-custom-hourly" placeholder="Leave blank for default" step="0.01" oninput="updateTLBPreview()"/>
+        </div>
+        <div class="form-group">
+          <label>Custom Daily Rate (ZAR) <span style="font-size:10px;color:var(--txt3)">default R7,500/day</span></label>
+          <input type="number" id="t-custom-daily" placeholder="Leave blank for default" step="0.01" oninput="updateTLBPreview()"/>
+        </div>
+      </div>
+      <div class="form-group"><label>Custom Rate Reason</label><input id="t-rate-reason" placeholder="e.g. Contract rate, government tender"/></div>
+      <div class="separator"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Transport Price (ZAR)</label><input type="number" id="t-transport" placeholder="0.00" step="0.01" oninput="updateTLBPreview()"/></div>
+        <div class="form-group"><label>Transport Notes</label><input id="t-transport-notes" placeholder="e.g. Travel to remote site"/></div>
+      </div>
+      <div class="form-row" style="align-items:center">
+        <div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="t-diesel" onchange="updateTLBPreview()"/> Include Diesel (R3,000)</label></div>
+      </div>
+      <div class="form-group"><label>Notes</label><textarea id="t-notes" rows="2"></textarea></div>
+
+      <!-- TLB Pricing Preview -->
+      <div class="pricing-box" style="margin-top:12px">
+        <div class="pricing-row"><span class="label">Hire charge</span><span class="val" id="tlb-prev-hire">R0.00</span></div>
+        <div class="pricing-row" id="tlb-prev-diesel-row" style="display:none"><span class="label">Diesel</span><span class="val">R3,000.00</span></div>
+        <div class="pricing-row" id="tlb-prev-transport-row" style="display:none"><span class="label">Transport</span><span class="val" id="tlb-prev-transport">R0.00</span></div>
+        <div class="pricing-row total"><span class="label">Total</span><span class="val" id="tlb-prev-total">R0.00</span></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-tlb')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTLB()">Create Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Delivery Modal -->
+<div class="modal-overlay hidden" id="modal-delivery">
+  <div class="modal">
+    <div class="modal-header"><h2>Schedule Delivery</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-delivery')">✕</button></div>
+    <div class="modal-body">
+      <div id="del-error" class="alert alert-error" style="display:none"></div>
+      <!-- Auto-filled when order is selected: shows address + previous link hint -->
+      <div id="del-addr-hint" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--txt2);line-height:1.7"></div>
+      <div class="form-grid">
+        <div class="form-row">
+          <div class="form-group"><label>Order *</label><select id="d-order" onchange="onDeliveryOrderChange()"><option value="">Select order...</option></select></div>
+          <div class="form-group"><label>Delivery Type *</label>
+            <select id="d-type" onchange="onDeliveryTypeChange()">
+              <option value="customer">Customer Delivery</option>
+              <option value="hardware">Hardware Delivery</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" id="d-store-group" style="display:none">
+          <label>Hardware Store *</label>
+          <select id="d-store-select" onchange="onDeliveryStoreChange()"><option value="">Select store account...</option></select>
+          <input id="d-store-name" placeholder="Type the store name..." style="display:none;margin-top:8px"/>
+          <div class="form-hint">Deliveries to a store account count on that store's balance in Store Accounts.</div>
+        </div>
+        <div class="form-group"><label>Scheduled Date *</label><input type="date" id="d-date"/></div>
+        <div class="form-row">
+          <div class="form-group"><label>Driver Name</label><input id="d-driver"/></div>
+          <div class="form-group"><label>Vehicle Reg</label><input id="d-vehicle"/></div>
+        </div>
+        <div class="form-group addr-wrap">
+          <label>Live Location Link <span style="font-size:10px;color:var(--txt3)">shared with customer for tracking</span></label>
+          <div class="addr-lookup-row">
+            <input id="d-location-link" placeholder="Select order above to auto-suggest, or paste link..."/>
+            <button class="btn btn-ghost addr-lookup-btn" type="button" onclick="lookupLinkForDelivery()">📍 Lookup</button>
+          </div>
+          <div id="d-addr-drop" class="addr-suggestions"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-delivery')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDelivery()">Schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Payment Modal -->
+<!-- Store Statement Modal -->
+<div class="modal-overlay hidden" id="modal-statement">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div><h2 id="st-title">Statement</h2><div style="font-size:12px;color:var(--txt3);margin-top:2px" id="st-subtitle"></div></div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-statement')">✕</button>
+    </div>
+    <div class="modal-body" id="st-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-statement')">Close</button>
+      <button class="btn btn-primary" id="st-pay-btn">Record Account Payment</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="modal-payment">
+  <div class="modal">
+    <div class="modal-header"><h2>Record Payment</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-payment')">✕</button></div>
+    <div class="modal-body">
+      <div id="pay-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-grid">
+        <div class="form-group"><label>Link to</label>
+          <select id="pay-type" onchange="onPayTypeChange()"><option value="order">Order</option><option value="tlb">TLB Booking</option><option value="store">Store Account (auto-allocate)</option></select></div>
+        <div class="form-group" id="pay-order-group"><label>Order *</label><select id="pay-order"><option value="">Select order...</option></select></div>
+        <div class="form-group" id="pay-tlb-group" style="display:none"><label>TLB Booking *</label><select id="pay-tlb"><option value="">Select booking...</option></select></div>
+        <div class="form-group" id="pay-store-group" style="display:none"><label>Store *</label><select id="pay-store" onchange="onPayStoreChange()"><option value="">Select store...</option></select>
+          <div class="form-hint">Paid amount is applied to this store's unpaid orders, oldest first. Partial amounts are fine — whatever is left stays on the account.</div>
+          <div id="pay-store-hint" style="font-size:12px;margin-top:6px;color:var(--amber)"></div></div>
+        <div class="form-row">
+          <div class="form-group"><label>Amount (ZAR) *</label><input type="number" id="pay-amount" step="0.01"/></div>
+          <div class="form-group"><label>Payment Date *</label><input type="date" id="pay-date"/></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Method</label>
+            <select id="pay-method"><option value="cash">Cash</option><option value="eft">EFT</option><option value="cheque">Cheque</option></select></div>
+          <div class="form-group"><label>Reference</label><input id="pay-ref"/></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-payment')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePayment()">Record Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pricing Edit Modal (for existing orders) -->
+<div class="modal-overlay hidden" id="modal-pricing">
+  <div class="modal">
+    <div class="modal-header"><h2>Edit Pricing</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-pricing')">✕</button></div>
+    <div class="modal-body">
+      <div id="pricing-error" class="alert alert-error" style="display:none"></div>
+      <input type="hidden" id="pricing-order-id"/>
+      <div class="form-row">
+        <div class="form-group"><label>Transport Price (ZAR)</label><input type="number" id="pe-transport" step="0.01" oninput="updatePricingPreview()"/></div>
+        <div class="form-group"><label>Transport Notes</label><input id="pe-transport-notes"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Discount %</label><input type="number" id="pe-disc-pct" min="0" max="100" step="0.1" oninput="updatePricingPreview()"/></div>
+        <div class="form-group"><label>Flat Discount (ZAR)</label><input type="number" id="pe-disc-amt" step="0.01" oninput="updatePricingPreview()"/></div>
+      </div>
+      <div class="form-group"><label>Discount Reason</label><input id="pe-disc-reason"/></div>
+      <div class="pricing-box" style="margin-top:12px" id="pe-preview"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-pricing')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePricing()">Save Pricing</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- New Laybuy Modal -->
+<div class="modal-overlay hidden" id="modal-laybuy">
+  <div class="modal modal-lg">
+    <div class="modal-header"><h2>New Lay-buy</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-laybuy')">✕</button></div>
+    <div class="modal-body">
+      <div id="lb-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Order *</label><select id="lb-order" onchange="onLaybuyOrderChange()"><option value="">Select order...</option></select></div>
+        <div class="form-group"><label>Start Date *</label><input type="date" id="lb-start"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Number of Months <span style="font-size:10px;color:var(--amber)">default is 3</span></label>
+          <input type="number" id="lb-months" value="3" min="1" max="24" oninput="updateLaybuyPreview()"/>
+          <div class="form-hint">Default is 3 months. Change to any value (1–24).</div>
+        </div>
+        <div class="form-group"><label>Notes</label><input id="lb-notes" placeholder="Optional notes"/></div>
+      </div>
+      <!-- Preview -->
+      <div class="pricing-box" id="lb-preview" style="margin-top:12px">
+        <div style="font-size:12px;color:var(--txt3);text-align:center">Select an order to see installment preview</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-laybuy')">Cancel</button>
+      <button class="btn btn-primary" id="save-lb-btn" onclick="saveLaybuy()">Create Lay-buy</button>
+    </div>
+  </div>
+</div>
+
+<!-- View Laybuy Modal -->
+<div class="modal-overlay hidden" id="modal-laybuy-view">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div><h2 id="lbv-title">Lay-buy</h2><div style="font-size:12px;color:var(--txt3);margin-top:2px" id="lbv-subtitle"></div></div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-laybuy-view')">✕</button>
+    </div>
+    <div class="modal-body" id="lbv-body"></div>
+  </div>
+</div>
+
+<!-- Product Modal (new / edit) -->
+<div class="modal-overlay hidden" id="modal-product">
+  <div class="modal">
+    <div class="modal-header"><h2 id="prod-modal-title">New Product</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-product')">✕</button></div>
+    <div class="modal-body">
+      <div id="prod-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-grid">
+        <div class="form-group"><label>Product Name *</label><input id="p-name" placeholder="e.g. Crusher Dust"/></div>
+        <div class="form-row">
+          <div class="form-group"><label>Category *</label>
+            <input id="p-category" list="p-category-list" placeholder="e.g. sand, stone, cement..."/>
+            <datalist id="p-category-list"></datalist>
+            <div class="form-hint">Used for revenue grouping in reports. Pick an existing category or type a new one.</div>
+          </div>
+          <div class="form-group"><label>Unit *</label>
+            <input id="p-unit" list="p-unit-list" placeholder="e.g. ton, item, litre"/>
+            <datalist id="p-unit-list"><option value="item"/><option value="ton"/><option value="litre"/><option value="hour"/><option value="bag"/></datalist>
+          </div>
+        </div>
+        <div class="form-group"><label>Description</label><textarea id="p-desc" rows="2" placeholder="Optional"></textarea></div>
+        <div class="form-group" id="p-active-group" style="display:none"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="p-active" checked/> Active (available on new orders)</label></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-product')">Cancel</button>
+      <button class="btn btn-primary" id="save-prod-btn" onclick="saveProduct()">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- Price Tier Modal (add / edit price) -->
+<div class="modal-overlay hidden" id="modal-tier">
+  <div class="modal">
+    <div class="modal-header"><div><h2 id="tier-modal-title">Edit Price</h2><div style="font-size:12px;color:var(--txt3);margin-top:2px" id="tier-modal-sub"></div></div><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-tier')">✕</button></div>
+    <div class="modal-body">
+      <div id="tier-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Tier Label *</label><input id="pt-label" placeholder="e.g. 1 Ton, Each, W/Barrow"/></div>
+        <div class="form-group"><label>Quantity *</label><input type="number" id="pt-qty" step="0.01" min="0.01" placeholder="e.g. 1"/>
+          <div class="form-hint">How many units this tier represents</div></div>
+      </div>
+      <div class="form-group" style="margin-top:10px"><label>Price (ZAR) *</label><input type="number" id="pt-price" step="0.01" min="0" placeholder="0.00"/></div>
+      <div id="pt-history-hint" class="form-hint" style="margin-top:10px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="retire-tier-btn" style="margin-right:auto;display:none" onclick="retireTier()">Retire Tier</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-tier')">Cancel</button>
+      <button class="btn btn-primary" id="save-tier-btn" onclick="saveTier()">Save Price</button>
+    </div>
+  </div>
+</div>
+
+<!-- View TLB Modal -->
+<div class="modal-overlay hidden" id="modal-tlb-view">
+  <div class="modal">
+    <div class="modal-header">
+      <div><h2 id="tv-title">TLB Booking</h2><div style="font-size:12px;color:var(--txt3);margin-top:2px" id="tv-subtitle"></div></div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-tlb-view')">✕</button>
+    </div>
+    <div class="modal-body" id="tv-body"></div>
+  </div>
+</div>
+<script>
+const API = '/api/v1';
+let TOKEN = localStorage.getItem('ls_token');
+let USER = null;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const fmt = v => 'R' + (+(v||0)).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today = () => new Date().toISOString().split('T')[0];
+// Escape user-entered text before injecting into innerHTML (names, addresses, notes...)
+const esc = s => s==null ? '' : String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Add months to a date string, clamping to month-end (matches the backend's add_months)
+function addMonthsClamped(iso, months){
+  const [y,m,d]=iso.split('-').map(Number);
+  const total=(m-1)+months, ny=y+Math.floor(total/12), nm=total%12;
+  const lastDay=new Date(ny, nm+1, 0).getDate();
+  const nd=Math.min(d,lastDay);
+  return `${ny}-${String(nm+1).padStart(2,'0')}-${String(nd).padStart(2,'0')}`;
+}
+// Toast notifications (replaces alert())
+function toast(msg, type='info'){
+  let wrap=document.getElementById('toast-wrap');
+  if(!wrap){wrap=document.createElement('div');wrap.id='toast-wrap';document.body.appendChild(wrap);}
+  const t=document.createElement('div');
+  t.className='toast toast-'+type;
+  t.textContent=msg;
+  wrap.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300);}, type==='error'?5000:3000);
+}
+// Download the Excel report with the auth token (the endpoint now requires login)
+async function downloadReport(btn){
+  const orig=btn.innerHTML; btn.innerHTML='<span class="spin"></span> Exporting...';
+  try{
+    const r=await fetch(API+'/export/full-report.xlsx',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok)throw new Error('Export failed ('+r.status+')');
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='logistics-report.xlsx';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }catch(e){toast(e.message,'error');}
+  finally{btn.innerHTML=orig;}
+}
+const statusBadge = s => {
+  const m={quote:'badge-gray',confirmed:'badge-blue',dispatched:'badge-amber',delivered:'badge-green',cancelled:'badge-red',scheduled:'badge-gray',completed:'badge-green'};
+  return `<span class="badge ${m[s]||'badge-gray'}">${s}</span>`;
+};
+
+async function api(path, opts={}) {
+  const r = await fetch(API+path, {
+    headers: {'Content-Type':'application/json', ...(TOKEN?{Authorization:'Bearer '+TOKEN}:{})},
+    ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  if (r.status===401){logout();return null;}
+  if (!r.ok){const e=await r.json().catch(()=>({detail:r.statusText}));throw new Error(e.detail||'Error');}
+  return r.json();
+}
+
+function showErr(id, msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';}}
+function hideErr(id){const el=document.getElementById(id);if(el)el.style.display='none';}
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+document.getElementById('li-btn').onclick = async()=>{
+  hideErr('login-error');
+  const u=document.getElementById('li-user').value, p=document.getElementById('li-pass').value;
+  if(!u||!p){showErr('login-error','Enter username and password');return;}
+  try{
+    const fd=new FormData(); fd.append('username',u); fd.append('password',p);
+    const r=await fetch(API+'/auth/login',{method:'POST',body:fd});
+    if(!r.ok){const e=await r.json().catch(()=>({detail:'Login failed ('+r.status+')'}));showErr('login-error',e.detail||'Invalid credentials');return;}
+    const d=await r.json(); TOKEN=d.access_token; localStorage.setItem('ls_token',TOKEN);
+    USER={role:d.role,full_name:d.full_name}; initApp();
+  }catch(e){showErr('login-error',e.message);}
+};
+document.getElementById('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('li-btn').click();});
+
+function logout(){TOKEN=null;localStorage.removeItem('ls_token');document.getElementById('app').style.display='none';document.getElementById('login-page').style.display='flex';}
+
+async function initApp(){
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('app').style.display='flex';
+  try{USER=await api('/auth/me');}catch(e){}
+  if(USER){
+    document.getElementById('user-name').textContent=USER.full_name;
+    document.getElementById('user-role-label').textContent=USER.role;
+    document.getElementById('user-avatar').textContent=(USER.full_name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  }
+  navTo('dashboard');
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.addEventListener('click',()=>navTo(el.dataset.page));
+});
+
+function navTo(page){
+  document.querySelectorAll('.nav-item').forEach(e=>e.classList.toggle('active',e.dataset.page===page));
+  document.querySelectorAll('.page').forEach(e=>e.classList.toggle('active',e.id==='page-'+page));
+  if(page==='dashboard')loadDashboard();
+  else if(page==='orders')loadOrders();
+  else if(page==='customers')loadCustomers();
+  else if(page==='stores')loadStores();
+  else if(page==='tlb')loadTLB();
+  else if(page==='deliveries')loadDeliveries();
+  else if(page==='payments')loadPayments();
+  else if(page==='gl')loadGL();
+  else if(page==='products')loadProducts();
+  else if(page==='laybuys')loadLaybuys();
+  else if(page==='best-customers')loadBestCustomers();
+}
+
+// ── Modal helpers ──────────────────────────────────────────────────────────
+function openModal(id){document.getElementById(id).classList.remove('hidden');}
+function closeModal(id){document.getElementById(id).classList.add('hidden');}
+document.querySelectorAll('.modal-overlay').forEach(o=>{o.addEventListener('click',e=>{if(e.target===o)closeModal(o.id);});});
+
+function toggleCollapsible(id,btn){
+  document.getElementById(id).classList.toggle('open');
+  btn.classList.toggle('open');
+}
+
+// ── Global data cache ──────────────────────────────────────────────────────
+let _customers=[], _products=[], _orders=[], _tlbs=[];
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+async function loadDashboard(){
+  try{
+    const [s,orders,tlbs]=await Promise.all([api('/reports/summary'),api('/orders'),api('/tlb')]);
+    _orders=orders; _tlbs=tlbs;
+    document.getElementById('dash-stats').innerHTML=`
+      <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value accent">${fmt(s.total_revenue)}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Paid</div><div class="stat-value green">${fmt(s.total_paid)}</div></div>
+      <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value amber">${fmt(s.outstanding)}</div></div>
+      <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-value">${s.order_count}</div></div>
+      <div class="stat-card"><div class="stat-label">Customers</div><div class="stat-value">${s.customer_count}</div></div>
+    `;
+    document.getElementById('dash-orders').innerHTML=orders.slice(0,6).map(o=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="viewOrder(${o.id})">
+        <div style="min-width:0;flex:1;margin-right:10px"><div class="mono" style="color:var(--accent);font-size:12px">${o.order_number}</div><div style="font-size:12px;color:var(--txt2)">${esc(o.customer_name)}</div>${o.delivery_address?`<div style="font-size:11px;color:var(--txt3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${esc(o.delivery_address)}</div>`:''}</div>
+        <div style="text-align:right">${statusBadge(o.status)}<div class="mono" style="font-size:12px;margin-top:3px">${fmt(o.total_zar)}</div></div>
+      </div>`).join('')||'<div class="empty"><p>No orders yet</p></div>';
+    document.getElementById('dash-tlb').innerHTML=tlbs.slice(0,6).map(t=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div><div style="font-size:12px;color:var(--txt);font-weight:500">TLB-${t.id} · ${esc(t.customer)}</div><div style="font-size:11px;color:var(--txt3)">${t.booking_date} · ${t.rate_type}</div></div>
+        <div class="mono" style="font-size:13px">${fmt(t.total_zar)}</div>
+      </div>`).join('')||'<div class="empty"><p>No bookings yet</p></div>';
+  }catch(e){console.error(e);}
+}
+
+// ── Orders ─────────────────────────────────────────────────────────────────
+let _allOrders=[];
+async function loadOrders(){
+  _allOrders=await api('/orders');_orders=_allOrders;renderOrders(_allOrders);
+}
+function renderOrders(list){
+  document.getElementById('orders-tbody').innerHTML=list.map(o=>{
+    const hasCustom=o.items&&o.items.some(i=>i.is_custom_price);
+    const hasDiscount=(o.discount_pct>0||o.discount_amount>0);
+    const hasTransport=o.transport_price>0;
+    return `<tr>
+      <td><span class="mono" style="color:var(--accent)">${o.order_number}</span>${hasCustom?`<span class="custom-price-badge" title="Has custom item prices">CUSTOM</span>`:''}</td>
+      <td>${esc(o.customer_name)}</td>
+      <td style="font-size:12px;color:var(--txt2)">${esc(o.delivery_address)||'–'}</td>
+      <td class="mono" style="font-size:12px">${o.order_date}</td>
+      <td>${statusBadge(o.status)}</td>
+      <td class="mono">${fmt(o.items_subtotal)}</td>
+      <td class="mono">${hasTransport?'<span style="color:var(--accent)">'+fmt(o.transport_price)+'</span>':'–'}</td>
+      <td>${hasDiscount?`<span style="color:var(--green);font-size:12px">${o.discount_pct>0?o.discount_pct.toFixed(1)+'%':''}${o.discount_pct>0&&o.discount_amount>0?' + ':''}${o.discount_amount>0?fmt(o.discount_amount):''}</span>`:'–'}</td>
+      <td class="mono" style="font-weight:600">${fmt(o.total_zar)}</td>
+      <td class="mono" style="color:${o.balance>0?'var(--amber)':'var(--green)'}">${fmt(o.balance)}</td>
+      <td class="td-actions">
+        <button class="btn btn-ghost btn-sm" onclick="viewOrder(${o.id})">View</button>
+        <button class="btn btn-ghost btn-sm" onclick="openPricingModal(${o.id})" title="Edit discounts & transport">💲</button>
+      </td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="10" style="text-align:center;color:var(--txt3);padding:32px">No orders found</td></tr>`;
+}
+function filterOrders(){
+  const q=document.getElementById('order-search').value.toLowerCase();
+  const s=document.getElementById('order-status-filter').value;
+  renderOrders(_allOrders.filter(o=>(o.order_number+o.customer_name).toLowerCase().includes(q)&&(!s||o.status===s)));
+}
+
+let _orderItems=[];
+function openNewOrder(){
+  _orderItems=[];
+  document.getElementById('order-modal-title').textContent='New Order';
+  document.getElementById('o-date').value=today();
+  ['o-customer','o-address','o-notes','o-custom-reason','o-disc-reason','o-transport-notes'].forEach(id=>document.getElementById(id).value='');
+  ['o-transport','o-disc-pct','o-disc-amt','o-custom-price','o-qty'].forEach(id=>{document.getElementById(id).value=id==='o-qty'?'1':'';});
+  document.getElementById('o-product').value='';
+  document.getElementById('o-tier').innerHTML='<option value="">Select tier...</option>';
+  document.getElementById('o-tier-preview').textContent='';
+  document.getElementById('o-items-body').innerHTML='';
+  hideErr('order-modal-error');
+  updateOrderPreview();
+  populateOrderCustomers();
+  populateOrderProducts();
+  openModal('modal-order');
+}
+
+async function populateOrderCustomers(){
+  if(!_customers.length)_customers=await api('/customers');
+  const s=document.getElementById('o-customer');
+  s.innerHTML='<option value="">Select customer...</option>'+_customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+}
+async function populateOrderProducts(){
+  if(!_products.length)_products=await api('/products');
+  const s=document.getElementById('o-product');
+  s.innerHTML='<option value="">Select product...</option>'+_products.map(p=>`<option value="${p.id}">${esc(p.name)} (${esc(p.category)})</option>`).join('');
+}
+function onProductChange(){
+  const pid=parseInt(document.getElementById('o-product').value);
+  const prod=_products.find(p=>p.id===pid);
+  const ts=document.getElementById('o-tier');
+  if(!prod){ts.innerHTML='<option value="">Select tier...</option>';return;}
+  ts.innerHTML='<option value="">Select tier...</option>'+prod.tiers.map(t=>`<option value="${t.id}" data-price="${t.price_zar}">${esc(t.tier_label)} — ${fmt(t.price_zar)}</option>`).join('');
+  onTierChange();
+}
+function onTierChange(){
+  const tOpt=document.getElementById('o-tier').selectedOptions[0];
+  const tierPrice=tOpt&&tOpt.dataset.price?parseFloat(tOpt.dataset.price):0;
+  const customPrice=parseFloat(document.getElementById('o-custom-price').value)||null;
+  const qty=parseInt(document.getElementById('o-qty').value)||1;
+  const effPrice=customPrice!==null?customPrice:tierPrice;
+  const preview=document.getElementById('o-tier-preview');
+  if(tierPrice){
+    preview.innerHTML=`Tier price: <span class="mono">${fmt(tierPrice)}</span> · Line total: <span class="mono" style="color:var(--accent)">${fmt(effPrice*qty)}</span>${customPrice!==null?` <span class="custom-price-badge">CUSTOM</span>`:''}`;
+  }else{preview.textContent='';}
+}
+
+function addItemToOrder(){
+  const pid=parseInt(document.getElementById('o-product').value);
+  const tid=parseInt(document.getElementById('o-tier').value);
+  const qty=parseInt(document.getElementById('o-qty').value)||1;
+  const customPrice=document.getElementById('o-custom-price').value?parseFloat(document.getElementById('o-custom-price').value):null;
+  const customReason=document.getElementById('o-custom-reason').value;
+  if(!pid||!tid){toast('Select a product and tier','error');return;}
+  const prod=_products.find(p=>p.id===pid);
+  const tier=prod&&prod.tiers.find(t=>t.id===tid);
+  if(!tier)return;
+  const effPrice=customPrice!==null?customPrice:tier.price_zar;
+  _orderItems.push({product_id:pid,price_tier_id:tid,quantity:qty,custom_unit_price:customPrice,custom_price_reason:customReason||null,
+    _productName:prod.name,_tierLabel:tier.tier_label,_tierPrice:tier.price_zar,_effPrice:effPrice,_lineTotal:effPrice*qty});
+  renderOrderItems();updateOrderPreview();
+  document.getElementById('o-qty').value='1';document.getElementById('o-custom-price').value='';document.getElementById('o-custom-reason').value='';
+  document.getElementById('o-tier-preview').textContent='';
+}
+function removeOrderItem(idx){_orderItems.splice(idx,1);renderOrderItems();updateOrderPreview();}
+function renderOrderItems(){
+  document.getElementById('o-items-body').innerHTML=_orderItems.map((it,i)=>`<tr>
+    <td>${esc(it._productName)}${it.custom_unit_price!==null?'<span class="custom-price-badge" style="margin-left:4px">CUSTOM</span>':''}</td>
+    <td>${esc(it._tierLabel)}</td><td>${it.quantity}</td>
+    <td class="mono">${fmt(it._effPrice)}${it.custom_unit_price!==null?`<span style="color:var(--txt3);font-size:10px;display:block">tier: ${fmt(it._tierPrice)}</span>`:''}</td>
+    <td class="mono">${fmt(it._lineTotal)}</td>
+    <td><button class="btn btn-danger btn-sm" onclick="removeOrderItem(${i})">✕</button></td>
+  </tr>`).join('')||'<tr><td colspan="6" style="color:var(--txt3);font-size:12px;padding:8px">No items added</td></tr>';
+}
+function updateOrderPreview(){
+  const subtotal=_orderItems.reduce((s,i)=>s+i._lineTotal,0);
+  const transport=parseFloat(document.getElementById('o-transport').value)||0;
+  const discPct=parseFloat(document.getElementById('o-disc-pct').value)||0;
+  const discAmt=parseFloat(document.getElementById('o-disc-amt').value)||0;
+  let total=subtotal+transport;
+  let discPctVal=0,discAmtVal=0;
+  if(discPct>0){discPctVal=total*(discPct/100);total-=discPctVal;}
+  if(discAmt>0){discAmtVal=discAmt;total-=discAmtVal;}
+  total=Math.max(total,0);
+  document.getElementById('prev-subtotal').textContent=fmt(subtotal);
+  const tr=document.getElementById('prev-transport-row'); tr.style.display=transport>0?'flex':'none';
+  document.getElementById('prev-transport').textContent=fmt(transport);
+  const dr1=document.getElementById('prev-disc-pct-row'); dr1.style.display=discPct>0?'flex':'none';
+  document.getElementById('prev-disc-pct').textContent='–'+fmt(discPctVal)+' ('+discPct.toFixed(1)+'%)';
+  const dr2=document.getElementById('prev-disc-amt-row'); dr2.style.display=discAmt>0?'flex':'none';
+  document.getElementById('prev-disc-amt').textContent='–'+fmt(discAmt);
+  document.getElementById('prev-total').textContent=fmt(total);
+}
+
+async function saveOrder(){
+  hideErr('order-modal-error');
+  const cid=parseInt(document.getElementById('o-customer').value);
+  const dt=document.getElementById('o-date').value;
+  if(!cid||!dt){showErr('order-modal-error','Customer and date are required');return;}
+  const btn=document.getElementById('save-order-btn'); btn.disabled=true; btn.textContent='Saving...';
+  try{
+    const order=await api('/orders',{method:'POST',body:{
+      customer_id:cid,order_date:dt,
+      delivery_address:document.getElementById('o-address').value||null,
+      notes:document.getElementById('o-notes').value||null,
+      transport_price:parseFloat(document.getElementById('o-transport').value)||0,
+      transport_notes:document.getElementById('o-transport-notes').value||null,
+      discount_pct:parseFloat(document.getElementById('o-disc-pct').value)||0,
+      discount_amount:parseFloat(document.getElementById('o-disc-amt').value)||0,
+      discount_reason:document.getElementById('o-disc-reason').value||null,
+    }});
+    for(const it of _orderItems){
+      await api(`/orders/${order.id}/items`,{method:'POST',body:{
+        product_id:it.product_id,price_tier_id:it.price_tier_id,quantity:it.quantity,
+        custom_unit_price:it.custom_unit_price,custom_price_reason:it.custom_price_reason}});
+    }
+    toast('Order '+order.order_number+' created','success');closeModal('modal-order');loadOrders();loadDashboard();
+  }catch(e){showErr('order-modal-error',e.message);}
+  finally{btn.disabled=false;btn.textContent='Create Order';}
+}
+
+async function viewOrder(oid){
+  const o=await api(`/orders/${oid}`);
+  document.getElementById('ov-title').textContent=o.order_number;
+  document.getElementById('ov-subtitle').textContent=`${o.customer_name} · ${o.order_date}`;
+  const hasD=o.discount_pct>0||o.discount_amount>0;
+  const hasT=o.transport_price>0;
+  document.getElementById('ov-body').innerHTML=`
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      ${statusBadge(o.status)}
+      <span class="badge badge-gray">${o.order_number}</span>
+      ${hasD?'<span class="badge badge-green">Discounted</span>':''}
+      ${hasT?'<span class="badge badge-blue">Transport</span>':''}
+    </div>
+    ${o.delivery_address?`<div style="font-size:12px;color:var(--txt2);margin-bottom:12px">📍 ${esc(o.delivery_address)}</div>`:''}
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Items subtotal</div><div class="mono" style="font-size:15px;margin-top:3px">${fmt(o.items_subtotal)}</div></div>
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Total</div><div class="mono" style="font-size:15px;font-weight:600;margin-top:3px">${fmt(o.total_zar)}</div></div>
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Balance</div><div class="mono" style="font-size:15px;margin-top:3px;color:${o.balance>0?'var(--amber)':'var(--green)'}">${fmt(o.balance)}</div></div>
+    </div>
+    ${hasT||hasD?`<div class="pricing-box" style="margin-bottom:14px">
+      ${hasT?`<div class="pricing-row"><span class="label">Transport${o.transport_notes?' ('+esc(o.transport_notes)+')':''}</span><span class="val">${fmt(o.transport_price)}</span></div>`:''}
+      ${o.discount_pct>0?`<div class="pricing-row discount"><span class="label">Discount ${o.discount_pct}%${o.discount_reason?' – '+esc(o.discount_reason):''}</span><span class="val">–${fmt((o.items_subtotal+o.transport_price)*(o.discount_pct/100))}</span></div>`:''}
+      ${o.discount_amount>0?`<div class="pricing-row discount"><span class="label">Flat discount${o.discount_reason&&!o.discount_pct?' – '+esc(o.discount_reason):''}</span><span class="val">–${fmt(o.discount_amount)}</span></div>`:''}
+    </div>`:''}
+    <div class="section-title" style="margin-bottom:8px">Items</div>
+    <table class="items-table"><thead><tr><th>Product</th><th>Tier</th><th>Qty</th><th>Unit Price</th><th>Line Total</th></tr></thead><tbody>
+    ${o.items.map(i=>`<tr>
+      <td>${esc(i.product_name)}${i.is_custom_price?'<span class="custom-price-badge" style="margin-left:4px">CUSTOM</span>':''}</td>
+      <td>${esc(i.tier_label)}</td><td>${i.quantity}</td>
+      <td class="mono">${fmt(i.unit_price_zar)}${i.is_custom_price?`<span style="color:var(--txt3);font-size:10px;display:block">tier: ${fmt(i.tier_price_zar)}${i.custom_price_reason?' · '+esc(i.custom_price_reason):''}</span>`:''}</td>
+      <td class="mono">${fmt(i.line_total_zar)}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    ${o.payments.length?`<div style="margin-top:14px"><div class="section-title" style="margin-bottom:8px">Payments</div>
+    <table class="items-table"><thead><tr><th>Date</th><th>Method</th><th>Amount</th></tr></thead><tbody>
+    ${o.payments.map(p=>`<tr><td>${p.payment_date}</td><td>${p.method}</td><td class="mono">${fmt(p.amount_zar)}</td></tr>`).join('')}
+    </tbody></table></div>`:''}
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      ${['quote','confirmed','dispatched','delivered','cancelled'].map(s=>`<button class="btn btn-ghost btn-sm${o.status===s?' btn-primary':''}" onclick="setOrderStatus(${o.id},'${s}',this)">${s}</button>`).join('')}
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="openPricingModal(${o.id});closeModal('modal-order-view')">Edit Pricing</button>
+    </div>`;
+  openModal('modal-order-view');
+}
+
+async function setOrderStatus(oid,status,btn){
+  try{await api(`/orders/${oid}/status`,{method:'PUT',body:{status}});toast('Order marked as '+status,'success');closeModal('modal-order-view');loadOrders();}
+  catch(e){toast(e.message,'error');}
+}
+
+// ── Pricing Edit Modal ─────────────────────────────────────────────────────
+let _pricingOrder=null;
+async function openPricingModal(oid){
+  _pricingOrder=await api('/orders/'+oid);
+  document.getElementById('pricing-order-id').value=oid;
+  document.getElementById('pe-transport').value=_pricingOrder.transport_price||'';
+  document.getElementById('pe-transport-notes').value=_pricingOrder.transport_notes||'';
+  document.getElementById('pe-disc-pct').value=_pricingOrder.discount_pct||'';
+  document.getElementById('pe-disc-amt').value=_pricingOrder.discount_amount||'';
+  document.getElementById('pe-disc-reason').value=_pricingOrder.discount_reason||'';
+  hideErr('pricing-error');updatePricingPreview();openModal('modal-pricing');
+}
+function updatePricingPreview(){
+  if(!_pricingOrder)return;
+  const subtotal=_pricingOrder.items_subtotal||0;
+  const transport=parseFloat(document.getElementById('pe-transport').value)||0;
+  const discPct=parseFloat(document.getElementById('pe-disc-pct').value)||0;
+  const discAmt=parseFloat(document.getElementById('pe-disc-amt').value)||0;
+  let total=subtotal+transport;
+  let dpv=0,dav=0;
+  if(discPct>0){dpv=total*(discPct/100);total-=dpv;}
+  if(discAmt>0){dav=discAmt;total-=dav;}total=Math.max(total,0);
+  document.getElementById('pe-preview').innerHTML=`
+    <div class="pricing-row"><span class="label">Items subtotal</span><span class="val">${fmt(subtotal)}</span></div>
+    ${transport>0?`<div class="pricing-row"><span class="label">Transport</span><span class="val">${fmt(transport)}</span></div>`:''}
+    ${discPct>0?`<div class="pricing-row discount"><span class="label">Discount ${discPct.toFixed(1)}%</span><span class="val">–${fmt(dpv)}</span></div>`:''}
+    ${discAmt>0?`<div class="pricing-row discount"><span class="label">Flat discount</span><span class="val">–${fmt(discAmt)}</span></div>`:''}
+    <div class="pricing-row total"><span class="label">New Total</span><span class="val">${fmt(total)}</span></div>`;
+}
+async function savePricing(){
+  const oid=document.getElementById('pricing-order-id').value;
+  hideErr('pricing-error');
+  try{
+    await api(`/orders/${oid}/pricing`,{method:'PUT',body:{
+      transport_price:parseFloat(document.getElementById('pe-transport').value)||0,
+      transport_notes:document.getElementById('pe-transport-notes').value||null,
+      discount_pct:parseFloat(document.getElementById('pe-disc-pct').value)||0,
+      discount_amount:parseFloat(document.getElementById('pe-disc-amt').value)||0,
+      discount_reason:document.getElementById('pe-disc-reason').value||null,
+    }});
+    toast('Pricing updated','success');closeModal('modal-pricing');loadOrders();
+  }catch(e){showErr('pricing-error',e.message);}
+}
+
+// ── Customers ──────────────────────────────────────────────────────────────
+async function loadCustomers(){
+  _customers=await api('/customers');renderCustomers(_customers);
+}
+function renderCustomers(list){
+  document.getElementById('customers-tbody').innerHTML=list.map(c=>`<tr>
+    <td style="font-weight:500;color:var(--txt)">${esc(c.name)}</td>
+    <td>${c.customer_type==='hardware_store'?'<span class="badge badge-purple">🏪 Store</span>':'<span class="badge badge-gray">Individual</span>'}</td>
+    <td>${esc(c.phone)||'–'}</td><td>${esc(c.email)||'–'}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.address)||'–'}</td>
+    <td class="td-actions">${c.customer_type==='hardware_store'?`<button class="btn btn-ghost btn-sm" onclick="viewStatement(${c.id})">Statement</button>`:''}<button class="btn btn-ghost btn-sm" onclick="editCustomer(${c.id})">Edit</button></td>
+  </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--txt3);padding:32px">No customers</td></tr>`;
+}
+function filterCustomers(){const q=document.getElementById('cust-search').value.toLowerCase();renderCustomers(_customers.filter(c=>c.name.toLowerCase().includes(q)));}
+let _editCustId=null;
+function openNewCustomer(){_editCustId=null;document.getElementById('cust-modal-title').textContent='New Customer';['c-name','c-phone','c-email','c-address','c-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('c-type').value='individual';hideErr('cust-error');document.getElementById('cust-dupe-warn').style.display='none';openModal('modal-customer');}
+function checkDuplicateCustomer(){
+  const name=document.getElementById('c-name').value.trim().toLowerCase();
+  const warn=document.getElementById('cust-dupe-warn');
+  if(!name||_editCustId){warn.style.display='none';return;}
+  const matches=_customers.filter(c=>c.name.toLowerCase()===name||(name.length>3&&c.name.toLowerCase().includes(name)));
+  if(matches.length){
+    warn.textContent='⚠ Similar customer already exists: '+matches.map(c=>c.name+' (ID '+c.id+')').join(', ')+'. Edit that record instead of creating a duplicate.';
+    warn.style.display='block';
+  }else{warn.style.display='none';}
+}
+async function editCustomer(id){
+  const c=await api('/customers/'+id);_editCustId=id;
+  document.getElementById('cust-modal-title').textContent='Edit Customer';
+  document.getElementById('c-name').value=c.name||'';document.getElementById('c-phone').value=c.phone||'';
+  document.getElementById('c-email').value=c.email||'';document.getElementById('c-address').value=c.address||'';
+  document.getElementById('c-notes').value=c.notes||'';document.getElementById('c-type').value=c.customer_type||'individual';hideErr('cust-error');openModal('modal-customer');
+}
+async function saveCustomer(){
+  hideErr('cust-error');
+  const name=document.getElementById('c-name').value;if(!name){showErr('cust-error','Name is required');return;}
+  const body={name,phone:document.getElementById('c-phone').value||null,email:document.getElementById('c-email').value||null,address:document.getElementById('c-address').value||null,notes:document.getElementById('c-notes').value||null,customer_type:document.getElementById('c-type').value};
+  try{
+    if(_editCustId)await api('/customers/'+_editCustId,{method:'PUT',body});
+    else await api('/customers',{method:'POST',body});
+    toast('Customer saved','success');closeModal('modal-customer');loadCustomers();
+  }catch(e){showErr('cust-error',e.message);}
+}
+
+// ── Store accounts ─────────────────────────────────────────────────────────
+async function loadStores(){
+  const [stores,unlinked,rev,trend]=await Promise.all([api('/stores'),api('/stores/unlinked-names'),api('/stores/revenue-summary'),api('/stores/revenue-monthly')]);
+  renderStoreTrend(trend);
+  const cards=document.getElementById('stores-rev-cards');
+  if(rev.all_time.total>0){
+    cards.style.display='grid';
+    const pct=v=>(v*100).toFixed(0)+'% of all revenue';
+    document.getElementById('rev-hw-month').textContent=fmt(rev.this_month.hardware);
+    document.getElementById('rev-hw-month-sub').textContent=rev.this_month.total>0?pct(rev.this_month.hardware_share):'';
+    document.getElementById('rev-hw-lastmonth').textContent=fmt(rev.last_month.hardware);
+    document.getElementById('rev-hw-lastmonth-sub').textContent=rev.last_month.total>0?pct(rev.last_month.hardware_share):'';
+    document.getElementById('rev-hw-ytd').textContent=fmt(rev.ytd.hardware);
+    document.getElementById('rev-hw-ytd-sub').textContent=rev.ytd.total>0?pct(rev.ytd.hardware_share):'';
+  }else cards.style.display='none';
+  document.getElementById('stores-empty').style.display=(stores.length||unlinked.names.length)?'none':'block';
+  const ub=document.getElementById('stores-unlinked');
+  if(unlinked.names.length){
+    document.getElementById('stores-unlinked-msg').textContent=
+      `${unlinked.names.length} store name${unlinked.names.length>1?'s':''} on past deliveries ha${unlinked.names.length>1?'ve':'s'} no account yet: ${unlinked.names.slice(0,5).join(', ')}${unlinked.names.length>5?'…':''}. Create accounts so their orders count here.`;
+    ub.style.display='flex';
+  }else ub.style.display='none';
+  document.getElementById('stores-tbody').innerHTML=stores.map(st=>`<tr>
+    <td style="font-weight:600;color:var(--txt)">🏪 ${esc(st.name)}<div style="font-size:11px;color:var(--txt3)">${esc(st.phone)||''}</div></td>
+    <td>${st.open_orders||'<span style="color:var(--txt3)">0</span>'}</td>
+    <td class="mono">${fmt(st.invoiced)}</td>
+    <td class="mono" style="color:var(--green)">${fmt(st.paid)}</td>
+    <td class="mono" style="font-weight:700;color:${st.balance>0.009?'var(--amber)':'var(--green)'}">${fmt(st.balance)}</td>
+    <td>${st.balance>0.009?(st.oldest_unpaid_days>=60?`<span class="badge badge-red">${st.oldest_unpaid_days}d overdue</span>`:st.oldest_unpaid_days>=30?`<span class="badge badge-amber">${st.oldest_unpaid_days}d</span>`:`<span style="color:var(--txt3)">${st.oldest_unpaid_days}d</span>`):'–'}</td>
+    <td class="mono" style="font-size:12px;color:var(--txt3)">${st.last_payment||'never'}</td>
+    <td class="td-actions">
+      <button class="btn btn-ghost btn-sm" onclick="viewStatement(${st.id})">Statement</button>
+      ${st.balance>0.009?`<button class="btn btn-primary btn-sm" onclick="openNewPayment(${st.id})">Pay</button>`:''}
+    </td>
+  </tr>`).join('')||`<tr><td colspan="8" style="text-align:center;color:var(--txt3);padding:32px">No hardware stores yet</td></tr>`;
+}
+function renderStoreTrend(trend){
+  const box=document.getElementById('stores-trend');
+  const hasData=trend.some(m=>m.total>0);
+  box.style.display=hasData?'block':'none';
+  if(!hasData)return;
+  const max=Math.max(...trend.map(m=>m.total));
+  document.getElementById('stores-trend-rows').innerHTML=trend.map(m=>{
+    const hwW=max?Math.round(m.hardware/max*100):0;
+    const drW=max?Math.round(m.direct/max*100):0;
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+      <div style="width:64px;flex-shrink:0;font-size:11px;color:var(--txt3);font-family:var(--mono);text-align:right">${m.label}</div>
+      <div style="flex:1;display:flex;height:18px;border-radius:4px;overflow:hidden;background:var(--bg)">
+        <div title="Hardware: ${fmt(m.hardware)}" style="width:${hwW}%;background:var(--accent);min-width:${m.hardware>0?'2px':'0'}"></div>
+        <div title="Direct: ${fmt(m.direct)}" style="width:${drW}%;background:var(--bg4);border-right:1px solid var(--border);min-width:${m.direct>0?'2px':'0'}"></div>
+      </div>
+      <div style="width:150px;flex-shrink:0;font-size:11px;font-family:var(--mono)">
+        <span style="color:var(--accent);font-weight:600">${m.hardware>0?fmt(m.hardware):'–'}</span>
+        <span style="color:var(--txt3)">${m.total>0?' · '+(m.hardware_share*100).toFixed(0)+'%':''}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function importStoreNames(){
+  try{
+    const res=await api('/stores/import-names',{method:'POST'});
+    toast(`${res.created.length} store account${res.created.length===1?'':'s'} created, ${res.linked_deliveries} deliver${res.linked_deliveries===1?'y':'ies'} linked`,'success');
+    loadStores();
+  }catch(e){toast(e.message,'error');}
+}
+async function viewStatement(cid){
+  const st=await api(`/stores/${cid}/statement`);
+  document.getElementById('st-title').textContent=st.name;
+  document.getElementById('st-subtitle').textContent='Account statement · '+today();
+  const payBtn=document.getElementById('st-pay-btn');
+  payBtn.style.display=st.balance>0.009?'inline-flex':'none';
+  payBtn.onclick=()=>{closeModal('modal-statement');openNewPayment(cid);};
+  document.getElementById('st-body').innerHTML=`
+    <div class="form-row-3" style="margin-bottom:16px">
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Invoiced</div><div class="mono" style="font-size:16px;font-weight:600;margin-top:3px">${fmt(st.invoiced)}</div></div>
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Paid</div><div class="mono" style="font-size:16px;margin-top:3px;color:var(--green)">${fmt(st.paid)}</div></div>
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Owes Us</div><div class="mono" style="font-size:16px;font-weight:700;margin-top:3px;color:${st.balance>0.009?'var(--amber)':'var(--green)'}">${fmt(st.balance)}</div></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Orders</div>
+    <div class="table-wrap" style="margin-bottom:18px"><table>
+      <thead><tr><th>Order</th><th>Date</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th></tr></thead>
+      <tbody>${st.orders.map(o=>`<tr>
+        <td class="mono" style="color:var(--accent)">${o.order_number}${o.via_delivery?`<div style="font-size:10px;color:var(--txt3);font-family:var(--sans,inherit)">for ${esc(o.end_customer)}</div>`:''}</td>
+        <td class="mono" style="font-size:12px">${o.order_date}${o.balance>0.009&&o.age_days>=30?` <span class="badge ${o.age_days>=60?'badge-red':'badge-amber'}" style="margin-left:4px">${o.age_days}d</span>`:''}</td>
+        <td>${statusBadge(o.status)}</td>
+        <td class="mono">${fmt(o.total_zar)}</td>
+        <td class="mono" style="color:var(--green)">${fmt(o.paid)}</td>
+        <td class="mono" style="font-weight:600;color:${o.balance>0.009?'var(--amber)':'var(--green)'}">${o.balance>0.009?fmt(o.balance):'✓ paid'}</td>
+      </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--txt3);padding:20px">No orders</td></tr>'}</tbody>
+    </table></div>
+    <div style="font-size:12px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Payments Received</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Amount</th><th>Applied To</th><th>Method</th><th>Reference</th></tr></thead>
+      <tbody>${st.payments.map(p=>`<tr>
+        <td class="mono" style="font-size:12px">${p.payment_date}</td>
+        <td class="mono" style="color:var(--green);font-weight:600">${fmt(p.amount_zar)}</td>
+        <td class="mono" style="font-size:12px">${p.order_number}</td>
+        <td><span class="badge badge-gray">${esc(p.method)}</span></td>
+        <td style="color:var(--txt3)">${esc(p.reference)||'–'}</td>
+      </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--txt3);padding:20px">No payments yet</td></tr>'}</tbody>
+    </table></div>`;
+  openModal('modal-statement');
+}
+
+// ── TLB ────────────────────────────────────────────────────────────────────
+async function loadTLB(){
+  _tlbs=await api('/tlb');
+  document.getElementById('tlb-tbody').innerHTML=_tlbs.map(t=>{
+    const isCustom=t.custom_hourly_rate||t.custom_daily_rate;
+    const effRate=t.rate_type==='hourly'?(t.custom_hourly_rate||1000):( t.custom_daily_rate||7500);
+    return `<tr>
+      <td class="mono" style="color:var(--accent)">TLB-${t.id}</td>
+      <td>${esc(t.customer)}</td>
+      <td class="mono" style="font-size:12px">${t.booking_date}</td>
+      <td>${statusBadge(t.status)}<span style="font-size:11px;color:var(--txt3);margin-left:4px">${t.rate_type}</span></td>
+      <td>${t.hours_billed}</td>
+      <td class="mono">${fmt(effRate)}${t.rate_type==='hourly'?'/hr':'/day'}${isCustom?'<span class="custom-price-badge" style="margin-left:4px">CUSTOM</span>':''}</td>
+      <td class="mono">${t.transport_price>0?'<span style="color:var(--accent)">'+fmt(t.transport_price)+'</span>':'–'}</td>
+      <td>${t.diesel_included?'<span class="badge badge-amber">Yes</span>':'–'}</td>
+      <td class="mono" style="font-weight:600">${fmt(t.total_zar)}</td>
+      <td class="mono" style="color:${t.balance>0?'var(--amber)':'var(--green)'}">${fmt(t.balance)}</td>
+      <td class="td-actions"><button class="btn btn-ghost btn-sm" onclick="viewTLB(${t.id})">View</button></td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="11" style="text-align:center;color:var(--txt3);padding:32px">No TLB bookings</td></tr>`;
+}
+
+function openNewTLB(){
+  if(!_customers.length)api('/customers').then(c=>{_customers=c;populateTLBCustomers();});
+  else populateTLBCustomers();
+  document.getElementById('t-date').value=today();
+  ['t-custom-hourly','t-custom-daily','t-rate-reason','t-transport','t-transport-notes','t-notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('t-hours').value='4';
+  document.getElementById('t-diesel').checked=false;
+  document.getElementById('t-rate-type').value='hourly';
+  hideErr('tlb-error');updateTLBPreview();openModal('modal-tlb');
+}
+function populateTLBCustomers(){
+  document.getElementById('t-customer').innerHTML='<option value="">Select...</option>'+_customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+}
+function onTLBRateChange(){updateTLBPreview();}
+function updateTLBPreview(){
+  const rateType=document.getElementById('t-rate-type').value;
+  const hours=parseFloat(document.getElementById('t-hours').value)||0;
+  const customHourly=parseFloat(document.getElementById('t-custom-hourly').value)||null;
+  const customDaily=parseFloat(document.getElementById('t-custom-daily').value)||null;
+  const diesel=document.getElementById('t-diesel').checked;
+  const transport=parseFloat(document.getElementById('t-transport').value)||0;
+  const hr=customHourly!==null?customHourly:1000;
+  const dr=customDaily!==null?customDaily:7500;
+  const hire=rateType==='hourly'?hours*hr:dr;
+  const total=hire+(diesel?3000:0)+transport;
+  document.getElementById('tlb-prev-hire').textContent=fmt(hire);
+  document.getElementById('tlb-prev-diesel-row').style.display=diesel?'flex':'none';
+  document.getElementById('tlb-prev-transport-row').style.display=transport>0?'flex':'none';
+  document.getElementById('tlb-prev-transport').textContent=fmt(transport);
+  document.getElementById('tlb-prev-total').textContent=fmt(total);
+}
+async function saveTLB(){
+  hideErr('tlb-error');
+  const cid=parseInt(document.getElementById('t-customer').value);
+  const dt=document.getElementById('t-date').value;
+  const hours=parseFloat(document.getElementById('t-hours').value)||0;
+  const rateType=document.getElementById('t-rate-type').value;
+  if(!cid||!dt||!hours){showErr('tlb-error','Customer, date and hours are required');return;}
+  try{
+    await api('/tlb',{method:'POST',body:{
+      customer_id:cid,booking_date:dt,hours_billed:hours,rate_type:rateType,
+      diesel_included:document.getElementById('t-diesel').checked,
+      notes:document.getElementById('t-notes').value||null,
+      custom_hourly_rate:parseFloat(document.getElementById('t-custom-hourly').value)||null,
+      custom_daily_rate:parseFloat(document.getElementById('t-custom-daily').value)||null,
+      custom_rate_reason:document.getElementById('t-rate-reason').value||null,
+      transport_price:parseFloat(document.getElementById('t-transport').value)||0,
+      transport_notes:document.getElementById('t-transport-notes').value||null,
+    }});
+    toast('TLB booking created','success');closeModal('modal-tlb');loadTLB();loadDashboard();
+  }catch(e){showErr('tlb-error',e.message);}
+}
+
+async function viewTLB(id){
+  const t=await api('/tlb/'+id);
+  const isCustom=t.custom_hourly_rate||t.custom_daily_rate;
+  const effRate=t.rate_type==='hourly'?(t.custom_hourly_rate||1000):(t.custom_daily_rate||7500);
+  const hire=t.rate_type==='hourly'?t.hours_billed*effRate:effRate;
+  document.getElementById('tv-title').textContent='TLB-'+t.id;
+  document.getElementById('tv-subtitle').textContent=`${t.customer} · ${t.booking_date}`;
+  document.getElementById('tv-body').innerHTML=`
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${statusBadge(t.status)}
+      <span class="badge badge-gray">${t.rate_type}</span>
+      ${isCustom?'<span class="custom-price-badge">CUSTOM RATE</span>':''}
+      ${t.diesel_included?'<span class="badge badge-amber">Diesel incl.</span>':''}
+    </div>
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Total</div><div class="mono" style="font-size:15px;font-weight:600;margin-top:3px">${fmt(t.total_zar)}</div></div>
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Balance</div><div class="mono" style="font-size:15px;margin-top:3px;color:${t.balance>0?'var(--amber)':'var(--green)'}">${fmt(t.balance)}</div></div>
+    </div>
+    <div class="pricing-box">
+      <div class="pricing-row"><span class="label">Rate</span><span class="val">${fmt(effRate)}${t.rate_type==='hourly'?'/hr':'/day'}${isCustom&&t.custom_rate_reason?' · '+esc(t.custom_rate_reason):''}</span></div>
+      <div class="pricing-row"><span class="label">Hours billed</span><span class="val">${t.hours_billed}</span></div>
+      <div class="pricing-row"><span class="label">Hire charge</span><span class="val">${fmt(hire)}</span></div>
+      ${t.diesel_included?'<div class="pricing-row"><span class="label">Diesel</span><span class="val">R3,000.00</span></div>':''}
+      ${t.transport_price>0?`<div class="pricing-row"><span class="label">Transport${t.transport_notes?' ('+esc(t.transport_notes)+')':''}</span><span class="val">${fmt(t.transport_price)}</span></div>`:''}
+      <div class="pricing-row"><span class="label">Paid</span><span class="val" style="color:var(--green)">${fmt(t.paid)}</span></div>
+      <div class="pricing-row total"><span class="label">Total</span><span class="val">${fmt(t.total_zar)}</span></div>
+    </div>
+    ${t.notes?`<div style="font-size:12px;color:var(--txt2);margin-top:12px"><strong style="color:var(--txt3)">Notes:</strong> ${esc(t.notes)}</div>`:''}
+  `;
+  openModal('modal-tlb-view');
+}
+
+// ── Deliveries ─────────────────────────────────────────────────────────────
+const delTypeBadge = t => t==='hardware'
+  ? '<span class="badge badge-hardware">Hardware</span>'
+  : '<span class="badge badge-customer-del">Customer</span>';
+
+async function loadDeliveries(){
+  const typeFilter=document.getElementById('del-type-filter')?.value||'';
+  const url='/deliveries'+(typeFilter?'?delivery_type='+typeFilter:'');
+  const [d,stats]=await Promise.all([api(url),api('/deliveries/stats')]);
+  // Stats row
+  document.getElementById('del-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${stats.total}</div></div>
+    <div class="stat-card"><div class="stat-label">Customer</div><div class="stat-value accent">${stats.customer}</div></div>
+    <div class="stat-card"><div class="stat-label">Hardware</div><div class="stat-value" style="color:var(--purple)">${stats.hardware}</div></div>
+    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value green">${stats.completed}</div></div>
+    <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value amber">${stats.pending}</div></div>
+  `;
+  document.getElementById('deliveries-tbody').innerHTML=d.map(d=>`<tr>
+    <td class="mono" style="color:var(--accent)">${d.order_number}</td>
+    <td>${esc(d.customer)}</td>
+    <td>${delTypeBadge(d.delivery_type)}</td>
+    <td style="font-size:12px;color:var(--txt2)">${esc(d.hardware_store_name)||'–'}</td>
+    <td class="mono" style="font-size:12px">${d.scheduled_date}</td>
+    <td class="mono" style="font-size:12px">${d.actual_date||'–'}</td>
+    <td>${esc(d.driver_name)||'–'}</td><td>${esc(d.vehicle_reg)||'–'}</td>
+    <td>${statusBadge(d.status)}</td>
+    <td>${d.live_location_link?`<a href="${esc(d.live_location_link)}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:11px">📍 Track</a>`:('–')}</td>
+    <td class="td-actions">${d.status!=='completed'?`<button class="btn btn-ghost btn-sm" onclick="markDelivered(${d.id})">Mark Delivered</button>`:'-'}</td>
+  </tr>`).join('')||`<tr><td colspan="11" style="text-align:center;color:var(--txt3);padding:32px">No deliveries</td></tr>`;
+}
+function onDeliveryStoreChange(){
+  document.getElementById('d-store-name').style.display=
+    document.getElementById('d-store-select').value==='__other__'?'block':'none';
+}
+function openNewDelivery(){
+  api('/stores').then(stores=>{
+    document.getElementById('d-store-select').innerHTML='<option value="">Select store account...</option>'
+      +stores.map(st=>`<option value="${st.id}">${esc(st.name)}</option>`).join('')
+      +'<option value="__other__">Other — no account yet (type name)</option>';
+    onDeliveryStoreChange();
+  }).catch(()=>{});
+  document.getElementById('d-date').value=today();
+  ['d-driver','d-vehicle','d-location-link','d-store-name'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('d-store-select').value='';document.getElementById('d-store-name').style.display='none';
+  document.getElementById('d-type').value='customer';
+  document.getElementById('d-store-group').style.display='none';
+  document.getElementById('del-addr-hint').style.display='none';
+  document.getElementById('d-addr-drop').style.display='none';
+  const sel=document.getElementById('d-order');sel.innerHTML='<option value="">Select order...</option>';
+  // Load orders and cache in _allOrders so onDeliveryOrderChange can find delivery_address
+  api('/orders').then(orders=>{
+    _allOrders=orders;
+    orders.filter(o=>['confirmed','dispatched'].includes(o.status)).forEach(o=>{
+      sel.innerHTML+=`<option value="${o.id}">${o.order_number} – ${esc(o.customer_name)}${o.delivery_address?' ('+esc(o.delivery_address.substring(0,30))+'...)':''}</option>`;
+    });
+  });
+  hideErr('del-error');openModal('modal-delivery');
+}
+async function saveDelivery(){
+  hideErr('del-error');
+  const oid=document.getElementById('d-order').value;const dt=document.getElementById('d-date').value;
+  const dtype=document.getElementById('d-type').value||'customer';
+  const storeSel=document.getElementById('d-store-select').value;
+  const storeName=document.getElementById('d-store-name').value.trim()||null;
+  if(!oid||!dt){showErr('del-error','Order and date are required');return;}
+  let storeId=null,sendName=null;
+  if(dtype==='hardware'){
+    if(!storeSel){showErr('del-error','Select the hardware store (or "Other" to type a name)');return;}
+    if(storeSel==='__other__'){
+      if(!storeName){showErr('del-error','Please type the hardware store name');return;}
+      sendName=storeName;
+    }else storeId=parseInt(storeSel);
+  }
+  try{
+    await api('/deliveries',{method:'POST',body:{
+      order_id:parseInt(oid),scheduled_date:dt,
+      driver_name:document.getElementById('d-driver').value||null,
+      vehicle_reg:document.getElementById('d-vehicle').value||null,
+      delivery_type:dtype,
+      hardware_store_customer_id:storeId,
+      hardware_store_name:sendName,
+      live_location_link:document.getElementById('d-location-link').value||null,
+    }});
+    toast('Delivery scheduled','success');closeModal('modal-delivery');loadDeliveries();
+  }catch(e){showErr('del-error',e.message);}
+}
+async function markDelivered(id){
+  try{
+    await api('/deliveries/'+id,{method:'PUT',body:{status:'completed',actual_date:today()}});
+    toast('Delivery marked as completed','success');await loadDeliveries();
+  }catch(e){toast('Could not mark as delivered: '+e.message,'error');}
+}
+function onDeliveryTypeChange(){
+  const isHw=document.getElementById('d-type').value==='hardware';
+  document.getElementById('d-store-group').style.display=isHw?'block':'none';
+  if(!isHw) document.getElementById('d-store-name').value='';
+}
+
+// ── Payments ───────────────────────────────────────────────────────────────
+async function loadPayments(){
+  const p=await api('/payments');
+  document.getElementById('payments-tbody').innerHTML=p.map(p=>`<tr>
+    <td class="mono" style="color:var(--txt3)">#${p.id}</td>
+    <td><span class="mono" style="color:var(--accent)">${esc(p.linked_to)}</span><div style="font-size:11px;color:var(--txt3)">${esc(p.customer)}</div></td>
+    <td class="mono" style="color:var(--green);font-weight:600">${fmt(p.amount_zar)}</td>
+    <td class="mono" style="font-size:12px">${p.payment_date}</td>
+    <td><span class="badge badge-gray">${esc(p.method)}</span></td>
+    <td style="color:var(--txt3)">${esc(p.reference)||'–'}</td>
+  </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--txt3);padding:32px">No payments</td></tr>`;
+}
+function onPayTypeChange(){
+  const t=document.getElementById('pay-type').value;
+  document.getElementById('pay-order-group').style.display=t==='order'?'block':'none';
+  document.getElementById('pay-tlb-group').style.display=t==='tlb'?'block':'none';
+  document.getElementById('pay-store-group').style.display=t==='store'?'block':'none';
+  if(t!=='store')document.getElementById('pay-store-hint').textContent='';
+}
+let _storeBalances={};
+function onPayStoreChange(){
+  const v=document.getElementById('pay-store').value;
+  const hint=document.getElementById('pay-store-hint');
+  hint.textContent=v&&_storeBalances[v]!=null?`Outstanding balance: ${fmt(_storeBalances[v])}`:'';
+}
+function openNewPayment(presetStoreId){
+  document.getElementById('pay-date').value=today();
+  document.getElementById('pay-amount').value='';document.getElementById('pay-ref').value='';
+  document.getElementById('pay-type').value=presetStoreId?'store':'order';onPayTypeChange();
+  const os=document.getElementById('pay-order');os.innerHTML='<option value="">Select order...</option>';
+  api('/orders').then(orders=>orders.forEach(o=>{os.innerHTML+=`<option value="${o.id}">${o.order_number} – ${esc(o.customer_name)} (${fmt(o.balance)} due)</option>`;}));
+  const ts=document.getElementById('pay-tlb');ts.innerHTML='<option value="">Select booking...</option>';
+  api('/tlb').then(tlbs=>tlbs.forEach(t=>{ts.innerHTML+=`<option value="${t.id}">TLB-${t.id} – ${esc(t.customer)} (${fmt(t.balance)} due)</option>`;}));
+  const ss=document.getElementById('pay-store');ss.innerHTML='<option value="">Select store...</option>';
+  _storeBalances={};
+  api('/stores').then(stores=>{
+    stores.forEach(st=>{_storeBalances[st.id]=st.balance;ss.innerHTML+=`<option value="${st.id}">${esc(st.name)} (${fmt(st.balance)} owed)</option>`;});
+    if(presetStoreId){ss.value=presetStoreId;onPayStoreChange();}
+  });
+  hideErr('pay-error');openModal('modal-payment');
+}
+function openStorePayment(){openNewPayment(null);document.getElementById('pay-type').value='store';onPayTypeChange();}
+async function savePayment(){
+  hideErr('pay-error');
+  const amt=parseFloat(document.getElementById('pay-amount').value);
+  const dt=document.getElementById('pay-date').value;
+  if(!amt||!dt){showErr('pay-error','Amount and date required');return;}
+  const type=document.getElementById('pay-type').value;
+  const body={amount_zar:amt,payment_date:dt,method:document.getElementById('pay-method').value,reference:document.getElementById('pay-ref').value||null};
+  if(type==='order'){const v=document.getElementById('pay-order').value;if(!v){showErr('pay-error','Select an order');return;}body.order_id=parseInt(v);}
+  else if(type==='tlb'){const v=document.getElementById('pay-tlb').value;if(!v){showErr('pay-error','Select a TLB booking');return;}body.tlb_booking_id=parseInt(v);}
+  else{const v=document.getElementById('pay-store').value;if(!v){showErr('pay-error','Select a store');return;}body.customer_id=parseInt(v);}
+  try{
+    const res=await api('/payments',{method:'POST',body});
+    if(res.account_payment){
+      const n=res.allocations.length;
+      toast(`${fmt(res.amount_zar)} allocated across ${n} order${n>1?'s':''} — ${res.balance_after>0.009?fmt(res.balance_after)+' still owed':'account settled'}`,'success');
+    }else toast('Payment recorded','success');
+    closeModal('modal-payment');loadPayments();loadDashboard();
+    if(document.getElementById('page-stores').classList.contains('active'))loadStores();
+  }catch(e){showErr('pay-error',e.message);}
+}
+
+// ── GL ─────────────────────────────────────────────────────────────────────
+let _currentGLTab='journal';
+function showGLTab(tab,el){
+  _currentGLTab=tab;
+  document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('active',t===el));
+  ['journal','trial','pl','aging'].forEach(t=>document.getElementById('gl-'+t).style.display=t===tab?'block':'none');
+  if(tab==='journal')loadJournal();else if(tab==='trial')loadTrialBalance();else if(tab==='pl')loadPL();else loadAging();
+}
+async function loadGL(){loadJournal();}
+async function loadJournal(){
+  const j=await api('/gl/journal');
+  document.getElementById('journal-tbody').innerHTML=j.map(e=>`<tr>
+    <td class="mono" style="font-size:12px">${e.entry_date}</td>
+    <td class="mono" style="font-size:11px;color:var(--txt3)">${e.transaction_ref}</td>
+    <td style="font-size:12px">${e.account_code} <span style="color:var(--txt3)">${e.account_name}</span></td>
+    <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.description}</td>
+    <td class="mono" style="text-align:right;color:${e.debit_zar>0?'var(--amber)':'var(--txt3)'}">${e.debit_zar>0?fmt(e.debit_zar):'–'}</td>
+    <td class="mono" style="text-align:right;color:${e.credit_zar>0?'var(--green)':'var(--txt3)'}">${e.credit_zar>0?fmt(e.credit_zar):'–'}</td>
+  </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--txt3);padding:32px">No journal entries</td></tr>`;
+}
+async function loadTrialBalance(){
+  const tb=await api('/gl/trial-balance');
+  document.getElementById('gl-trial').innerHTML=`<div class="table-wrap"><table>
+    <thead><tr><th>Code</th><th>Account</th><th>Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">Net</th></tr></thead>
+    <tbody>${tb.map(r=>`<tr>
+      <td class="mono" style="font-size:12px;color:var(--txt3)">${r.code}</td>
+      <td style="font-weight:500">${r.name}</td>
+      <td><span class="badge badge-gray">${r.account_type}</span></td>
+      <td class="mono" style="text-align:right">${r.total_debit>0?fmt(r.total_debit):'–'}</td>
+      <td class="mono" style="text-align:right">${r.total_credit>0?fmt(r.total_credit):'–'}</td>
+      <td class="mono" style="text-align:right;font-weight:600;color:${r.net>=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(r.net))}${r.net<0?' Dr':' Cr'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+async function loadPL(){
+  const pl=await api('/gl/profit-loss');
+  document.getElementById('gl-pl').innerHTML=`
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--txt3);margin-bottom:10px">Revenue</div>
+      ${pl.revenue.map(r=>`<div class="pricing-row"><span class="label">${r.code} – ${r.name}</span><span class="val" style="color:var(--green)">${fmt(r.amount)}</span></div>`).join('')}
+      <div class="pricing-row total"><span class="label">Total Revenue</span><span class="val" style="color:var(--green)">${fmt(pl.total_revenue)}</span></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--txt3);margin-bottom:10px">Expenses</div>
+      ${pl.expenses.map(e=>`<div class="pricing-row"><span class="label">${e.code} – ${e.name}</span><span class="val" style="color:var(--red)">${fmt(e.amount)}</span></div>`).join('')}
+      <div class="pricing-row total"><span class="label">Total Expenses</span><span class="val" style="color:var(--red)">${fmt(pl.total_expenses)}</span></div>
+    </div>
+    <div class="card-sm"><div class="pricing-row total"><span class="label" style="font-size:15px">Net Profit / (Loss)</span><span class="val" style="font-size:17px;color:${pl.net_profit>=0?'var(--green)':'var(--red)'}">${fmt(pl.net_profit)}</span></div></div>`;
+}
+async function loadAging(){
+  const ag=await api('/gl/ar-aging');
+  document.getElementById('gl-aging').innerHTML=`<div class="table-wrap"><table>
+    <thead><tr><th>Customer</th><th>Order</th><th>Date</th><th style="text-align:right">Balance</th><th style="text-align:right">0-30d</th><th style="text-align:right">31-60d</th><th style="text-align:right">61-90d</th><th style="text-align:right">90d+</th></tr></thead>
+    <tbody>${ag.map(r=>`<tr>
+      <td>${r.customer}</td><td class="mono" style="font-size:12px;color:var(--accent)">${r.order_number}</td>
+      <td class="mono" style="font-size:12px">${r.order_date}</td>
+      <td class="mono" style="text-align:right;font-weight:600">${fmt(r.balance)}</td>
+      <td class="mono" style="text-align:right;color:${r.current>0?'var(--green)':'var(--txt3)'}">${r.current>0?fmt(r.current):'–'}</td>
+      <td class="mono" style="text-align:right;color:${r.days_31_60>0?'var(--amber)':'var(--txt3)'}">${r.days_31_60>0?fmt(r.days_31_60):'–'}</td>
+      <td class="mono" style="text-align:right;color:${r.days_61_90>0?'var(--amber)':'var(--txt3)'}">${r.days_61_90>0?fmt(r.days_61_90):'–'}</td>
+      <td class="mono" style="text-align:right;color:${r.days_90_plus>0?'var(--red)':'var(--txt3)'}">${r.days_90_plus>0?fmt(r.days_90_plus):'–'}</td>
+    </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--txt3);padding:32px">No outstanding balances</td></tr>'}</tbody>
+  </table></div>`;
+}
+
+// ── Products ───────────────────────────────────────────────────────────────
+let _adminProducts=[];
+const isAdmin=()=>USER&&USER.role==='admin';
+
+async function loadProducts(){
+  const showInactive=document.getElementById('prod-show-inactive').checked;
+  _adminProducts=await api('/products'+(showInactive?'?include_inactive=true':''));
+  // Keep the order-modal cache in sync (active products only)
+  _products=_adminProducts.filter(p=>p.is_active!==false);
+  const admin=isAdmin();
+  document.getElementById('new-product-btn').style.display=admin?'inline-flex':'none';
+  document.getElementById('prod-admin-hint').style.display=admin?'none':'block';
+  document.getElementById('products-tbody').innerHTML=_adminProducts.map(p=>`<tr class="${p.is_active===false?'product-inactive':''}">
+    <td style="font-weight:500;color:var(--txt)">${esc(p.name)}${p.is_active===false?' <span class="badge badge-red" style="margin-left:6px">Inactive</span>':''}</td>
+    <td><span class="badge badge-purple">${esc(p.category)}</span></td>
+    <td style="color:var(--txt3)">${esc(p.unit)}</td>
+    <td>${p.tiers.map(t=>admin
+        ?`<span class="tier-chip" title="Click to edit this price" onclick="openEditTier(${p.id},${t.id})">${esc(t.tier_label)}: <span class="tc-price">${fmt(t.price_zar)}</span> ✎</span>`
+        :`<span class="tier-chip" style="cursor:default">${esc(t.tier_label)}: <span class="tc-price">${fmt(t.price_zar)}</span></span>`
+      ).join('')||'<span style="color:var(--txt3)">No tiers</span>'}
+      ${admin?`<span class="tier-chip" style="border-style:dashed;color:var(--accent)" onclick="openAddTier(${p.id})">+ Add tier</span>`:''}
+    </td>
+    <td class="td-actions">${admin?`<button class="btn btn-ghost btn-sm" onclick="openEditProduct(${p.id})">Edit</button>`:''}</td>
+  </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--txt3);padding:32px">No products</td></tr>';
+}
+
+let _editProdId=null;
+function populateCategoryDatalist(){
+  const cats=[...new Set(_adminProducts.map(p=>p.category))].sort();
+  document.getElementById('p-category-list').innerHTML=cats.map(c=>`<option value="${esc(c)}"/>`).join('');
+}
+function openNewProduct(){
+  _editProdId=null;
+  document.getElementById('prod-modal-title').textContent='New Product';
+  ['p-name','p-category','p-unit','p-desc'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('p-active-group').style.display='none';
+  populateCategoryDatalist();
+  hideErr('prod-error');openModal('modal-product');
+}
+function openEditProduct(pid){
+  const p=_adminProducts.find(x=>x.id===pid);if(!p)return;
+  _editProdId=pid;
+  document.getElementById('prod-modal-title').textContent='Edit Product';
+  document.getElementById('p-name').value=p.name;
+  document.getElementById('p-category').value=p.category;
+  document.getElementById('p-unit').value=p.unit;
+  document.getElementById('p-desc').value=p.description||'';
+  document.getElementById('p-active-group').style.display='block';
+  document.getElementById('p-active').checked=p.is_active!==false;
+  populateCategoryDatalist();
+  hideErr('prod-error');openModal('modal-product');
+}
+async function saveProduct(){
+  hideErr('prod-error');
+  const name=document.getElementById('p-name').value.trim();
+  const category=document.getElementById('p-category').value.trim();
+  const unit=document.getElementById('p-unit').value.trim();
+  if(!name||!category||!unit){showErr('prod-error','Name, category and unit are required');return;}
+  const btn=document.getElementById('save-prod-btn');btn.disabled=true;
+  try{
+    const body={name,category,unit,description:document.getElementById('p-desc').value||null};
+    if(_editProdId){
+      body.is_active=document.getElementById('p-active').checked;
+      await api('/products/'+_editProdId,{method:'PUT',body});
+      toast('Product updated','success');
+    }else{
+      const created=await api('/products',{method:'POST',body});
+      toast(`Product "${created.name}" created — now add a price tier`,'success');
+      _editProdId=created.id;
+    }
+    closeModal('modal-product');
+    _products=[];  // invalidate order-modal cache
+    await loadProducts();
+    if(_editProdId&&!_adminProducts.find(p=>p.id===_editProdId)?.tiers?.length){
+      openAddTier(_editProdId);  // a product without prices can't be ordered — go straight there
+    }
+  }catch(e){showErr('prod-error',e.message);openModal('modal-product');}
+  finally{btn.disabled=false;}
+}
+
+// ── Price tiers ─────────────────────────────────────────────────────────────
+let _tierCtx=null; // {pid, tid|null}
+function openAddTier(pid){
+  const p=_adminProducts.find(x=>x.id===pid);if(!p)return;
+  _tierCtx={pid,tid:null};
+  document.getElementById('tier-modal-title').textContent='Add Price Tier';
+  document.getElementById('tier-modal-sub').textContent=p.name;
+  ['pt-label','pt-qty','pt-price'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('pt-label').disabled=false;
+  document.getElementById('pt-qty').value='1';
+  document.getElementById('retire-tier-btn').style.display='none';
+  document.getElementById('pt-history-hint').textContent='';
+  hideErr('tier-error');openModal('modal-tier');
+}
+function openEditTier(pid,tid){
+  const p=_adminProducts.find(x=>x.id===pid);if(!p)return;
+  const t=p.tiers.find(x=>x.id===tid);if(!t)return;
+  _tierCtx={pid,tid};
+  document.getElementById('tier-modal-title').textContent='Edit Price';
+  document.getElementById('tier-modal-sub').textContent=`${p.name} · ${t.tier_label}`;
+  document.getElementById('pt-label').value=t.tier_label;
+  document.getElementById('pt-label').disabled=true;
+  document.getElementById('pt-qty').value=t.quantity;
+  document.getElementById('pt-price').value=t.price_zar;
+  document.getElementById('retire-tier-btn').style.display='inline-flex';
+  document.getElementById('pt-history-hint').textContent=
+    `Current price ${fmt(t.price_zar)} (since ${t.effective_from}). Saving a new price keeps the old one in history — past orders are not affected.`;
+  hideErr('tier-error');openModal('modal-tier');
+}
+async function saveTier(){
+  hideErr('tier-error');
+  const label=document.getElementById('pt-label').value.trim();
+  const qty=parseFloat(document.getElementById('pt-qty').value);
+  const price=parseFloat(document.getElementById('pt-price').value);
+  if(!label||!(qty>0)||isNaN(price)||price<0){showErr('tier-error','Label, a positive quantity and a valid price are required');return;}
+  const btn=document.getElementById('save-tier-btn');btn.disabled=true;
+  try{
+    await api(`/products/${_tierCtx.pid}/prices`,{method:'POST',body:{tier_label:label,quantity:qty,price_zar:price}});
+    toast(_tierCtx.tid?'Price updated':'Price tier added','success');
+    closeModal('modal-tier');
+    _products=[];
+    loadProducts();
+  }catch(e){showErr('tier-error',e.message);}
+  finally{btn.disabled=false;}
+}
+async function retireTier(){
+  if(!_tierCtx||!_tierCtx.tid)return;
+  if(!confirm('Retire this price tier? It will no longer be offered on new orders (existing orders keep it).'))return;
+  try{
+    await api(`/products/${_tierCtx.pid}/prices/${_tierCtx.tid}`,{method:'DELETE'});
+    toast('Tier retired','success');
+    closeModal('modal-tier');
+    _products=[];
+    loadProducts();
+  }catch(e){showErr('tier-error',e.message);}
+}
+
+// ── Best Customers ──────────────────────────────────────────────────────────
+const statusColor={
+  'Active':'var(--green)','New':'var(--purple)',
+  'Quiet':'var(--amber)','At Risk':'var(--amber)',
+  'Lapsing':'var(--red)','Lapsed':'var(--red)'
+};
+const statusIcon={'Active':'✅','New':'🆕','Quiet':'🟡','At Risk':'⚠️','Lapsing':'🔴','Lapsed':'💀'};
+
+async function loadBestCustomers(){
+  const limit=document.getElementById('bc-limit')?.value||20;
+  const data=await api('/reports/top-customers?limit='+limit);
+  if(!data||!data.length){
+    document.getElementById('bc-podium').innerHTML='<p style="color:var(--txt3);grid-column:span 3">No customer data yet.</p>';
+    document.getElementById('bc-tbody').innerHTML='';
+    document.getElementById('bc-stats').innerHTML='';
+    return;
+  }
+
+  // — Podium (top 3) —
+  const medals=['🥇','🥈','🥉'];
+  const podAccents=['var(--amber)','var(--txt2)','#d08350'];
+  const top3=data.slice(0,3);
+  document.getElementById('bc-podium').innerHTML=top3.map((c,i)=>`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-top:3px solid ${podAccents[i]};border-radius:var(--radius-lg);padding:20px 22px;position:relative">
+      <div style="font-size:28px;margin-bottom:6px">${medals[i]}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:4px">${esc(c.name)}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--accent);margin-bottom:8px;font-family:var(--mono)">${fmt(c.revenue)}</div>
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--txt2)">
+        <span>${c.orders} orders</span>
+        <span>${(c.rev_share*100).toFixed(1)}% of revenue</span>
+      </div>
+      <div style="margin-top:8px">
+        <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${statusColor[c.status]||'var(--txt2)'}">${statusIcon[c.status]||''} ${c.status}</span>
+      </div>
+      <div style="position:absolute;top:12px;right:14px;font-size:11px;color:var(--txt3)">Last: ${c.last_order||'–'}</div>
+    </div>`).join('');
+
+  // — Summary stats —
+  const totalRev=data.reduce((s,c)=>s+c.revenue,0);
+  const top3Rev=data.slice(0,3).reduce((s,c)=>s+c.revenue,0);
+  const active=data.filter(c=>c.status==='Active'||c.status==='New').length;
+  const atRisk=data.filter(c=>['At Risk','Lapsing','Lapsed'].includes(c.status)).length;
+  document.getElementById('bc-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Customers Shown</div><div class="stat-value">${data.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Combined Revenue</div><div class="stat-value accent">${fmt(totalRev)}</div></div>
+    <div class="stat-card"><div class="stat-label">Top 3 Share</div><div class="stat-value" style="color:var(--amber)">${totalRev>0?((top3Rev/totalRev)*100).toFixed(1)+'%':'–'}</div></div>
+    <div class="stat-card"><div class="stat-label">Active / New</div><div class="stat-value green">${active}</div></div>
+    <div class="stat-card"><div class="stat-label">At Risk / Lapsed</div><div class="stat-value" style="color:var(--red)">${atRisk}</div></div>
+  `;
+
+  // — Ranked table —
+  document.getElementById('bc-tbody').innerHTML=data.map(c=>{
+    const sc=statusColor[c.status]||'var(--txt2)';
+    const si=statusIcon[c.status]||'';
+    return `<tr>
+      <td style="font-weight:700;color:var(--txt3)">#${c.rank}</td>
+      <td style="font-weight:600;color:var(--txt)">${esc(c.name)}</td>
+      <td style="font-weight:700;color:var(--accent)">${fmt(c.revenue)}</td>
+      <td style="color:var(--txt2)">${(c.rev_share*100).toFixed(1)}%</td>
+      <td>${c.orders}</td>
+      <td>${fmt(c.avg_order)}</td>
+      <td style="color:var(--txt3)">${c.orders_per_month}</td>
+      <td class="mono" style="font-size:12px;color:var(--txt3)">${c.last_order||'–'}</td>
+      <td style="color:${c.days_since_last>90?'var(--red)':c.days_since_last>30?'var(--amber)':'var(--green)'}">${c.days_since_last===9999?'–':c.days_since_last+'d'}</td>
+      <td><span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${sc}">${si} ${c.status}</span></td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="10" style="text-align:center;color:var(--txt3);padding:32px">No data</td></tr>`;
+}
+
+// ── Address Lookup (internal history) ──────────────────────────────────────
+// Queries past order delivery addresses and surfaces previous transport costs
+// and live location links for re-use — no external services needed.
+
+async function lookupAddress(inputId, dropId){
+  const val=document.getElementById(inputId).value.trim();
+  const drop=document.getElementById(dropId);
+  if(val.length<2){drop.style.display='none';return;}
+  drop.innerHTML='<div class="addr-suggestion" style="color:var(--txt3)">Searching history...</div>';
+  drop.style.display='block';
+  try{
+    const results=await api('/addresses/lookup?q='+encodeURIComponent(val));
+    if(!results.length){
+      drop.innerHTML='<div class="addr-suggestion" style="color:var(--txt3)">No previous addresses match — type to save for next time</div>';
+      return;
+    }
+    drop.innerHTML=results.map((r,i)=>{
+      const encoded=encodeURIComponent(JSON.stringify(r));
+      const tags=[];
+      if(r.transport_price>0) tags.push(`<span style="color:var(--amber)">🚚 R${r.transport_price.toLocaleString('en-ZA')}${r.transport_notes?' · '+esc(r.transport_notes):''}</span>`);
+      if(r.live_location_link) tags.push('<span style="color:var(--green)">📍 Has live link</span>');
+      return `<div class="addr-suggestion" onclick="selectAddress('${inputId}','${dropId}','${encoded}')">
+        <div style="font-weight:500;color:var(--txt)">${esc(r.address)}</div>
+        <div style="font-size:11px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">
+          <span style="color:var(--txt3)">👤 ${esc(r.last_customer)} · 📅 ${r.last_used}</span>
+          ${tags.join('')}
+        </div>
+      </div>`;
+    }).join('');
+    // Close on outside click
+    setTimeout(()=>document.addEventListener('click',function h(e){if(!drop.contains(e.target)){drop.style.display='none';document.removeEventListener('click',h);}},true),100);
+  }catch(e){drop.innerHTML='<div class="addr-suggestion" style="color:var(--txt3)">Lookup failed</div>';}
+}
+
+function selectAddress(inputId, dropId, encoded){
+  const r=JSON.parse(decodeURIComponent(encoded));
+  document.getElementById(inputId).value=r.address;
+  document.getElementById(dropId).style.display='none';
+  // Order modal: offer to apply previous transport cost
+  if(inputId==='o-address' && r.transport_price>0){
+    const label=`R${r.transport_price.toLocaleString('en-ZA')}${r.transport_notes?' ('+r.transport_notes+')':''}`;
+    showAddrTransportHint(r.transport_price, r.transport_notes, label);
+  }
+}
+
+let _pendingTransport = null;
+function showAddrTransportHint(price, notes, label){
+  _pendingTransport = {price, notes};
+  let hint=document.getElementById('o-addr-transport-hint');
+  if(!hint){
+    hint=document.createElement('div');
+    hint.id='o-addr-transport-hint';
+    hint.style.cssText='font-size:12px;color:var(--amber);background:var(--amber-dim);border:1px solid rgba(245,166,35,.25);border-radius:var(--radius);padding:8px 12px;margin-top:6px;display:flex;align-items:center;gap:8px';
+    document.getElementById('o-addr-drop').parentElement.appendChild(hint);
+  }
+  hint.innerHTML='🚚 Previous transport cost: <strong>'+label+'</strong>'
+    +'<button class="btn btn-sm" style="background:var(--amber);color:#000;border:none;padding:3px 10px;margin-left:auto" onclick="applyPrevTransport()">Use it</button>'
+    +'<button class="btn btn-ghost btn-sm" style="padding:3px 8px" onclick="document.getElementById(\'o-addr-transport-hint\').style.display=\'none\'">✕</button>';
+  hint.style.display='flex';
+}
+
+function applyPrevTransport(){
+  if(!_pendingTransport) return;
+  const {price, notes} = _pendingTransport;
+  const ps=document.getElementById('pricing-section');
+  const tog=document.querySelector('.collapsible-toggle[onclick*="pricing-section"]');
+  if(ps&&!ps.classList.contains('open')&&tog) toggleCollapsible('pricing-section',tog);
+  document.getElementById('o-transport').value=price;
+  if(notes) document.getElementById('o-transport-notes').value=notes;
+  updateOrderPreview();
+  document.getElementById('o-addr-transport-hint').style.display='none';
+}
+
+// ── Delivery modal: auto-lookup live link when order is selected ────────────
+async function onDeliveryOrderChange(){
+  const sel=document.getElementById('d-order');
+  const oid=parseInt(sel.value);
+  const hint=document.getElementById('del-addr-hint');
+  hint.style.display='none';
+  document.getElementById('d-location-link').value='';
+  if(!oid) return;
+  const order=_orders.find(o=>o.id===oid)||_allOrders.find(o=>o.id===oid);
+  const addr=order&&order.delivery_address;
+  if(!addr){hint.innerHTML='<span style="color:var(--txt3)">No delivery address on this order.</span>';hint.style.display='block';return;}
+  hint.innerHTML=`📦 Delivery to: <strong>${esc(addr)}</strong> — checking history...`;
+  hint.style.display='block';
+  try{
+    const results=await api('/addresses/lookup?q='+encodeURIComponent(addr));
+    // Find closest match (same address text)
+    const match=results.find(r=>r.address.trim().toLowerCase()===addr.trim().toLowerCase())||results[0];
+    if(match&&match.live_location_link){
+      hint.innerHTML=`📦 Delivery to: <strong>${esc(addr)}</strong><br>
+        <span style="color:var(--green)">📍 Found a live link from a previous delivery to this address (last used ${match.last_used}).</span>
+        &nbsp;<button class="btn btn-success btn-sm" style="padding:2px 10px;font-size:11px" onclick="document.getElementById('d-location-link').value=this.dataset.link;this.closest('[id=del-addr-hint]').querySelector('button').remove()" data-link="${(match.live_location_link||'').replace(/"/g,'&quot;')}">Use previous link</button>`;
+    } else if(match&&match.transport_price>0){
+      hint.innerHTML=`📦 Delivery to: <strong>${esc(addr)}</strong><br>
+        <span style="color:var(--amber)">🚚 Previously transported here for R${match.transport_price.toLocaleString('en-ZA')}${match.transport_notes?' · '+esc(match.transport_notes):''}. No saved live link yet.</span>`;
+    } else {
+      hint.innerHTML=`📦 Delivery to: <strong>${esc(addr)}</strong> — <span style="color:var(--txt3)">no previous delivery history for this address.</span>`;
+    }
+  }catch(e){
+    hint.innerHTML=`📦 Delivery to: <strong>${esc(addr)}</strong>`;
+  }
+}
+
+// Manual lookup button on the live link field — searches by the order's address
+async function lookupLinkForDelivery(){
+  const sel=document.getElementById('d-order');
+  const oid=parseInt(sel.value);
+  const drop=document.getElementById('d-addr-drop');
+  const order=_orders.find(o=>o.id===oid)||_allOrders.find(o=>o.id===oid);
+  const addr=order&&order.delivery_address;
+  if(!addr){drop.innerHTML='<div class="addr-suggestion" style="color:var(--txt3)">Select an order first</div>';drop.style.display='block';return;}
+  drop.innerHTML='<div class="addr-suggestion" style="color:var(--txt3)">Searching...</div>';
+  drop.style.display='block';
+  try{
+    const results=await api('/addresses/lookup?q='+encodeURIComponent(addr));
+    if(!results.length){drop.innerHTML='<div class="addr-suggestion" style="color:var(--txt3)">No previous deliveries to this address</div>';return;}
+    drop.innerHTML=results.map((r,i)=>{
+      const enc=encodeURIComponent(JSON.stringify(r));
+      return `<div class="addr-suggestion" onclick="selectLinkFromHistory('${enc}')">
+        <div style="font-weight:500;color:var(--txt)">${esc(r.address)}</div>
+        <div style="font-size:11px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">
+          <span style="color:var(--txt3)">👤 ${esc(r.last_customer)} · 📅 ${r.last_used}</span>
+          ${r.live_location_link?'<span style="color:var(--green)">📍 Has live link</span>':'<span style="color:var(--txt3)">No saved link</span>'}
+          ${r.transport_price>0?`<span style="color:var(--amber)">🚚 R${r.transport_price.toLocaleString('en-ZA')}</span>`:''}
+        </div>
+      </div>`;
+    }).join('');
+    setTimeout(()=>document.addEventListener('click',function h(e){if(!drop.contains(e.target)){drop.style.display='none';document.removeEventListener('click',h);}},true),100);
+  }catch(e){drop.innerHTML='<div class="addr-suggestion" style="color:var(--txt3)">Lookup failed</div>';}
+}
+
+function selectLinkFromHistory(encoded){
+  const r=JSON.parse(decodeURIComponent(encoded));
+  if(r.live_location_link) document.getElementById('d-location-link').value=r.live_location_link;
+  document.getElementById('d-addr-drop').style.display='none';
+}
+
+// ── Lay-buys ────────────────────────────────────────────────────────────────
+let _laybuys=[];
+let _lbOrderTotal=0;
+async function loadLaybuys(){
+  _laybuys=await api('/laybuys');
+  const active=_laybuys.filter(l=>l.status==='active').length;
+  const completed=_laybuys.filter(l=>l.status==='completed').length;
+  const totalVal=_laybuys.reduce((s,l)=>s+l.total_amount,0);
+  const outstanding=_laybuys.filter(l=>l.status==='active').reduce((s,l)=>s+l.balance,0);
+  document.getElementById('lb-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Total Lay-buys</div><div class="stat-value">${_laybuys.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value amber">${active}</div></div>
+    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value green">${completed}</div></div>
+    <div class="stat-card"><div class="stat-label">Total Value</div><div class="stat-value accent">${fmt(totalVal)}</div></div>
+    <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value" style="color:var(--red)">${fmt(outstanding)}</div></div>
+  `;
+  const lbBadge=s=>({active:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-gray');
+  document.getElementById('laybuys-tbody').innerHTML=_laybuys.map(l=>`<tr>
+    <td class="mono" style="color:var(--accent)">LB-${l.id}</td>
+    <td class="mono" style="font-size:12px">${l.order_number||'–'}</td>
+    <td>${esc(l.customer_name)||'–'}</td>
+    <td class="mono" style="font-size:12px">${l.start_date}</td>
+    <td style="text-align:center">${l.months}</td>
+    <td class="mono">${fmt(l.installment_amount)}/mo</td>
+    <td class="mono" style="color:var(--green)">${fmt(l.paid_amount)}</td>
+    <td class="mono" style="color:${l.balance>0?'var(--amber)':'var(--green)'}">${fmt(l.balance)}</td>
+    <td><span class="badge ${lbBadge(l.status)}">${l.status}</span></td>
+    <td class="td-actions"><button class="btn btn-ghost btn-sm" onclick="viewLaybuy(${l.id})">View</button></td>
+  </tr>`).join('')||`<tr><td colspan="10" style="text-align:center;color:var(--txt3);padding:32px">No lay-buys yet</td></tr>`;
+}
+function openNewLaybuy(){
+  document.getElementById('lb-start').value=today();
+  document.getElementById('lb-months').value='3';
+  document.getElementById('lb-notes').value='';
+  document.getElementById('lb-preview').innerHTML='<div style="font-size:12px;color:var(--txt3);text-align:center">Select an order to see installment preview</div>';
+  _lbOrderTotal=0;
+  const sel=document.getElementById('lb-order');
+  sel.innerHTML='<option value="">Select order...</option>';
+  api('/orders').then(orders=>{
+    orders.filter(o=>o.status!=='cancelled').forEach(o=>{
+      sel.innerHTML+=`<option value="${o.id}" data-total="${o.total_zar}">${o.order_number} – ${esc(o.customer_name)} (${fmt(o.total_zar)})</option>`;
+    });
+  });
+  hideErr('lb-error');openModal('modal-laybuy');
+}
+function onLaybuyOrderChange(){
+  const opt=document.getElementById('lb-order').selectedOptions[0];
+  _lbOrderTotal=opt&&opt.dataset.total?parseFloat(opt.dataset.total):0;
+  updateLaybuyPreview();
+}
+function updateLaybuyPreview(){
+  const months=parseInt(document.getElementById('lb-months').value)||3;
+  const start=document.getElementById('lb-start').value;
+  if(!_lbOrderTotal||!start){document.getElementById('lb-preview').innerHTML='<div style="font-size:12px;color:var(--txt3);text-align:center">Select an order to see preview</div>';return;}
+  const installment=Math.round((_lbOrderTotal/months)*100)/100;
+  const last=Math.round((_lbOrderTotal-installment*(months-1))*100)/100;
+  let rows='';
+  for(let i=0;i<months;i++){
+    const due=addMonthsClamped(start,i);
+    const amt=i<months-1?installment:last;
+    rows+=`<div class="pricing-row"><span class="label">Month ${i+1} · ${due}</span><span class="val">${fmt(amt)}</span></div>`;
+  }
+  document.getElementById('lb-preview').innerHTML=`
+    <div class="pricing-row"><span class="label">Total</span><span class="val" style="color:var(--txt)">${fmt(_lbOrderTotal)}</span></div>
+    <div class="pricing-row"><span class="label">${months} monthly installments</span><span class="val">${fmt(installment)}/mo</span></div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:8px 0"/>
+    ${rows}
+  `;
+}
+async function saveLaybuy(){
+  hideErr('lb-error');
+  const oid=document.getElementById('lb-order').value;
+  const start=document.getElementById('lb-start').value;
+  const months=parseInt(document.getElementById('lb-months').value)||3;
+  if(!oid||!start){showErr('lb-error','Order and start date are required');return;}
+  const btn=document.getElementById('save-lb-btn');btn.disabled=true;btn.textContent='Creating...';
+  try{
+    await api('/laybuys',{method:'POST',body:{
+      order_id:parseInt(oid),months,start_date:start,
+      notes:document.getElementById('lb-notes').value||null,
+    }});
+    toast('Lay-buy created','success');closeModal('modal-laybuy');loadLaybuys();
+  }catch(e){showErr('lb-error',e.message);}
+  finally{btn.disabled=false;btn.textContent='Create Lay-buy';}
+}
+async function viewLaybuy(id){
+  const lb=await api('/laybuys/'+id);
+  document.getElementById('lbv-title').textContent='LB-'+lb.id+' · '+lb.order_number;
+  document.getElementById('lbv-subtitle').textContent=`${lb.customer_name} · ${lb.months} months · ${fmt(lb.installment_amount)}/mo`;
+  const lbBadge=s=>({active:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-gray');
+  const paidPct=lb.total_amount>0?Math.round((lb.paid_amount/lb.total_amount)*100):0;
+  document.getElementById('lbv-body').innerHTML=`
+    <div class="form-row" style="margin-bottom:16px">
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Total</div><div class="mono" style="font-size:15px;margin-top:3px">${fmt(lb.total_amount)}</div></div>
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Paid</div><div class="mono" style="font-size:15px;margin-top:3px;color:var(--green)">${fmt(lb.paid_amount)}</div></div>
+      <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Balance</div><div class="mono" style="font-size:15px;margin-top:3px;color:${lb.balance>0?'var(--amber)':'var(--green)'}">${fmt(lb.balance)}</div></div>
+    </div>
+    <div style="background:var(--bg3);border-radius:4px;height:8px;margin-bottom:16px;overflow:hidden">
+      <div style="background:var(--green);height:100%;width:${paidPct}%;transition:.3s"></div>
+    </div>
+    <div class="section-title" style="margin-bottom:12px">Installment Schedule</div>
+    ${lb.installments.map(i=>`
+      <div class="inst-row">
+        <div class="inst-num ${i.paid?'paid':''}">${i.installment_number}</div>
+        <div class="inst-details">
+          <div style="font-weight:500;color:var(--txt)">${fmt(i.amount)}</div>
+          <div class="inst-due">Due: ${i.due_date}${i.paid_date?' · Paid: '+i.paid_date:''}</div>
+        </div>
+        ${i.paid
+          ?'<span class="badge badge-green">Paid ✓</span>'
+          :(lb.status==='active'?`<button class="btn btn-success btn-sm" onclick="markInstallmentPaid(${lb.id},${i.id})">Mark Paid</button>`:'')
+        }
+      </div>`).join('')}
+    ${lb.status==='active'?`<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn btn-danger btn-sm" onclick="cancelLaybuy(${lb.id})">Cancel Lay-buy</button></div>`:''}
+  `;
+  openModal('modal-laybuy-view');
+}
+async function markInstallmentPaid(lbId,instId){
+  try{
+    const lb=await api(`/laybuys/${lbId}/installments/${instId}/pay`,{method:'PUT',body:{paid_date:today()}});
+    viewLaybuy(lbId);loadLaybuys();
+  }catch(e){toast(e.message,'error');}
+}
+async function cancelLaybuy(id){
+  if(!confirm('Cancel this lay-buy?'))return;
+  await api('/laybuys/'+id+'/cancel',{method:'PUT',body:{}});
+  closeModal('modal-laybuy-view');loadLaybuys();
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+if(TOKEN){initApp();}
+</script>
+</body>
+</html>
