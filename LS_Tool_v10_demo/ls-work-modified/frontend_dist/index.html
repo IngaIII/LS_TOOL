@@ -216,6 +216,23 @@ select option{background:var(--bg3)}
 .tier-chip .tc-price{color:var(--accent);font-weight:600}
 .product-inactive td{opacity:.45}
 
+/* Driver accounts are view-only: hide every control that creates or changes data.
+   The server enforces this too — hiding is just good UX. */
+body.role-driver [onclick*="openNew"],
+body.role-driver [onclick*="openEdit"],
+body.role-driver [onclick*="editCustomer"],
+body.role-driver [onclick*="editUser"],
+body.role-driver [onclick*="openAddTier"],
+body.role-driver [onclick*="openPricingModal"],
+body.role-driver [onclick*="markDelivered"],
+body.role-driver [onclick*="setOrderStatus"],
+body.role-driver [onclick*="markInstallment"],
+body.role-driver [onclick*="openStorePayment"],
+body.role-driver [onclick*="importStoreNames"],
+body.role-driver [onclick*="downloadReport"],
+body.role-driver #st-pay-btn,
+body.role-driver #new-product-btn{display:none!important}
+
 /* Mobile cards (rendered alongside tables; visibility switched by media query) */
 .mcards{display:none}
 .mcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px}
@@ -343,6 +360,7 @@ select option{background:var(--bg3)}
       <div class="sheet-item" onclick="navTo('products')">🧱 Products & Pricing</div>
       <div class="sheet-item" onclick="navTo('best-customers')">🏆 Best Customers</div>
       <div class="sheet-item" onclick="navTo('gl')">📒 General Ledger</div>
+      <div class="sheet-item admin-only" style="display:none" onclick="navTo('users')">🔑 Users</div>
       <div class="sheet-user">
         <span id="sheet-user-name">Signed in</span>
         <button class="btn btn-ghost btn-sm" onclick="logout()">Sign out</button>
@@ -399,6 +417,10 @@ select option{background:var(--bg3)}
       Products
     </div>
     <div class="nav-section">Analysis</div>
+    <div class="nav-item admin-only" data-page="users" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/><circle cx="9" cy="7" r="4"/></svg>
+      Users
+    </div>
     <div class="nav-item" data-page="best-customers">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
       Best Customers
@@ -625,6 +647,25 @@ select option{background:var(--bg3)}
         <div class="table-wrap"><table>
           <thead><tr><th>Product</th><th>Category</th><th>Unit</th><th>Price Tiers <span style="font-weight:400;text-transform:none;letter-spacing:0">(click a tier to edit its price)</span></th><th></th></tr></thead>
           <tbody id="products-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div class="page" id="page-users">
+      <div class="topbar"><h1>Users</h1><div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewUser()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New User
+        </button>
+      </div></div>
+      <div style="padding:24px 28px">
+        <div class="alert" style="background:var(--bg3);color:var(--txt3);border:1px solid var(--border);margin-bottom:16px">
+          <strong style="color:var(--txt2)">Driver</strong> accounts can view everything but cannot create or change anything. <strong style="color:var(--txt2)">Admin</strong> accounts have full control.
+        </div>
+        <div class="mcards" id="users-cards"></div>
+        <div class="table-wrap has-cards"><table>
+          <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+          <tbody id="users-tbody"></tbody>
         </table></div>
       </div>
     </div>
@@ -1059,6 +1100,32 @@ select option{background:var(--bg3)}
   </div>
 </div>
 
+<!-- User Modal -->
+<div class="modal-overlay hidden" id="modal-user">
+  <div class="modal">
+    <div class="modal-header"><h2 id="user-modal-title">New User</h2><button class="btn btn-ghost btn-sm" onclick="closeModal('modal-user')">✕</button></div>
+    <div class="modal-body">
+      <div id="user-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Username *</label><input id="u-username" autocapitalize="none" placeholder="e.g. lucky"/></div>
+        <div class="form-group"><label>Full Name *</label><input id="u-fullname" placeholder="e.g. Lucky Mthembu"/></div>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <div class="form-group"><label>Role *</label>
+          <select id="u-role"><option value="driver">Driver (view only)</option><option value="admin">Admin (full control)</option></select></div>
+        <div class="form-group"><label id="u-pass-label">Password *</label><input id="u-password" type="text" autocapitalize="none" placeholder="min 6 characters"/></div>
+      </div>
+      <div class="form-group" id="u-active-group" style="display:none;margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="u-active" checked/> Active (can sign in)</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-user')">Cancel</button>
+      <button class="btn btn-primary" id="save-user-btn" onclick="saveUser()">Save User</button>
+    </div>
+  </div>
+</div>
+
 <!-- View TLB Modal -->
 <div class="modal-overlay hidden" id="modal-tlb-view">
   <div class="modal">
@@ -1162,6 +1229,8 @@ async function initApp(){
     document.getElementById('user-role-label').textContent=USER.role;
     document.getElementById('user-avatar').textContent=(USER.full_name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     document.getElementById('sheet-user-name').textContent=`${USER.full_name} · ${USER.role}`;
+    document.body.classList.toggle('role-driver',USER.role==='driver');
+    document.querySelectorAll('.admin-only').forEach(e=>e.style.display=USER.role==='admin'?'':'none');
   }
   navTo('dashboard');
 }
@@ -1188,6 +1257,7 @@ function navTo(page){
   else if(page==='payments')loadPayments();
   else if(page==='gl')loadGL();
   else if(page==='products')loadProducts();
+  else if(page==='users')loadUsers();
   else if(page==='laybuys')loadLaybuys();
   else if(page==='best-customers')loadBestCustomers();
 }
@@ -1549,6 +1619,76 @@ async function saveCustomer(){
     else await api('/customers',{method:'POST',body});
     toast('Customer saved','success');closeModal('modal-customer');loadCustomers();
   }catch(e){showErr('cust-error',e.message);}
+}
+
+// ── Users (admin) ──────────────────────────────────────────────────────────
+let _users=[];
+async function loadUsers(){
+  _users=await api('/users');
+  const row=u=>`
+    <td class="mono">${esc(u.username)}</td>
+    <td>${esc(u.full_name)}</td>
+    <td>${u.role==='admin'?'<span class="badge badge-purple">Admin</span>':'<span class="badge badge-gray">Driver · view only</span>'}</td>
+    <td>${u.is_active?'<span class="badge badge-green">Active</span>':'<span class="badge badge-red">Disabled</span>'}</td>
+    <td class="td-actions"><button class="btn btn-ghost btn-sm" onclick="editUser(${u.id})">Edit</button></td>`;
+  document.getElementById('users-tbody').innerHTML=_users.map(u=>`<tr>${row(u)}</tr>`).join('');
+  const uc=document.getElementById('users-cards');
+  if(uc)uc.innerHTML=_users.map(u=>`
+    <div class="mcard">
+      <div class="mcard-top"><div class="mcard-sub">${esc(u.full_name)}</div>
+        ${u.role==='admin'?'<span class="badge badge-purple">Admin</span>':'<span class="badge badge-gray">Driver</span>'}</div>
+      <div class="mcard-meta">@${esc(u.username)} · ${u.is_active?'active':'disabled'}</div>
+      <div class="mcard-actions"><button class="btn btn-ghost btn-sm" onclick="editUser(${u.id})">Edit</button></div>
+    </div>`).join('');
+}
+let _editUserId=null;
+function openNewUser(){
+  _editUserId=null;
+  document.getElementById('user-modal-title').textContent='New User';
+  ['u-username','u-fullname','u-password'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('u-role').value='driver';
+  document.getElementById('u-username').disabled=false;
+  document.getElementById('u-pass-label').textContent='Password *';
+  document.getElementById('u-active-group').style.display='none';
+  hideErr('user-error');openModal('modal-user');
+}
+function editUser(uid){
+  const u=_users.find(x=>x.id===uid);if(!u)return;
+  _editUserId=uid;
+  document.getElementById('user-modal-title').textContent='Edit User';
+  document.getElementById('u-username').value=u.username;
+  document.getElementById('u-username').disabled=true;
+  document.getElementById('u-fullname').value=u.full_name;
+  document.getElementById('u-role').value=u.role;
+  document.getElementById('u-password').value='';
+  document.getElementById('u-pass-label').textContent='New Password (blank = unchanged)';
+  document.getElementById('u-active-group').style.display='block';
+  document.getElementById('u-active').checked=u.is_active;
+  hideErr('user-error');openModal('modal-user');
+}
+async function saveUser(){
+  hideErr('user-error');
+  const btn=document.getElementById('save-user-btn');btn.disabled=true;
+  try{
+    if(_editUserId){
+      const body={full_name:document.getElementById('u-fullname').value,
+                  role:document.getElementById('u-role').value,
+                  is_active:document.getElementById('u-active').checked};
+      const pw=document.getElementById('u-password').value;
+      if(pw)body.password=pw;
+      await api('/users/'+_editUserId,{method:'PUT',body});
+      toast('User updated','success');
+    }else{
+      await api('/users',{method:'POST',body:{
+        username:document.getElementById('u-username').value,
+        full_name:document.getElementById('u-fullname').value,
+        password:document.getElementById('u-password').value,
+        role:document.getElementById('u-role').value}});
+      toast('User created — give them the username and password','success');
+    }
+    closeModal('modal-user');loadUsers();
+  }catch(e){showErr('user-error',e.message);}
+  finally{btn.disabled=false;}
 }
 
 // ── Store accounts ─────────────────────────────────────────────────────────
