@@ -20,11 +20,11 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 from database import engine, get_db, SessionLocal
 import models
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from routers.api import router
 from seed import seed_database
 from exports.excel import generate_full_report
@@ -41,10 +41,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def driver_read_only(request, call_next):
+    """Drivers are read-only: block every mutating request at one choke point,
+    so no endpoint (present or future) can be forgotten."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and        request.url.path.startswith("/api/") and        request.url.path != "/api/v1/auth/login":
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            try:
+                from jose import jwt as _jwt
+                from auth import SECRET_KEY as _SK, ALGORITHM as _ALG
+                payload = _jwt.decode(auth_header[7:], _SK, algorithms=[_ALG])
+                username = payload.get("sub")
+                if username:
+                    db = SessionLocal()
+                    try:
+                        u = db.query(models.User).filter_by(username=username, is_active=True).first()
+                    finally:
+                        db.close()
+                    if u and u.role == "driver":
+                        return JSONResponse(status_code=403, content={
+                            "detail": "Your account is view-only. Ask an admin to make this change."})
+            except Exception:
+                pass  # invalid/expired token -> let the endpoint return its normal 401
+    return await call_next(request)
+
 app.include_router(router, prefix="/api/v1")
 
 @app.get("/api/v1/export/full-report.xlsx")
-def export_full_report(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def export_full_report(db: Session = Depends(get_db), _=Depends(require_admin)):
     output = generate_full_report(db)
     return StreamingResponse(
         output,
@@ -110,16 +135,32 @@ def startup():
 # Serve frontend — looks for frontend_dist next to the backend folder
 FRONTEND_DIST = os.path.join(_HERE, "..", "frontend_dist")
 FRONTEND_DIST = os.path.abspath(FRONTEND_DIST)
+_INDEX = os.path.join(FRONTEND_DIST, "index.html")
 
-if os.path.exists(FRONTEND_DIST):
+if os.path.isdir(os.path.join(FRONTEND_DIST, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
 
-    @app.get("/{full_path:path}")
-    def serve_frontend(full_path: str):
-        if full_path.startswith("api/"):
-            return None
-        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+if not os.path.exists(_INDEX):
+    print(f"WARNING: frontend not found at {FRONTEND_DIST} — "
+          "the UI will not load. Make sure the frontend_dist folder is deployed "
+          "next to the backend folder (check the repo contents and Railway's Root Directory setting).")
+
+@app.get("/{full_path:path}")
+def serve_frontend(full_path: str):
+    if full_path.startswith("api/"):
+        return None
+    if os.path.exists(_INDEX):
+        # serve real static files (icons, manifest) directly, everything else gets the app
+        candidate = os.path.abspath(os.path.join(FRONTEND_DIST, full_path))
+        if full_path and candidate.startswith(FRONTEND_DIST) and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(_INDEX)
+    return JSONResponse(status_code=500, content={
+        "error": "Frontend files not found on the server.",
+        "looked_in": FRONTEND_DIST,
+        "fix": "Deploy the frontend_dist folder alongside the backend folder "
+               "(push the whole project root to GitHub and leave Railway's Root Directory empty)."})
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

@@ -7,7 +7,6 @@ pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 def seed_database(db):
     from models import User, Product, PriceTier, Account
 
-    # Admin user — password set via ADMIN_PASSWORD env var, never hardcoded
     if not db.query(User).first():
         password = os.environ.get("ADMIN_PASSWORD")
         if not password:

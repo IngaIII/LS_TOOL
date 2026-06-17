@@ -5,6 +5,8 @@ from io import BytesIO
 from datetime import date
 from collections import defaultdict
 
+from exports import forecasting as _fc
+
 # ── Palette ───────────────────────────────────────────────────────────────────
 PRIMARY    = "1E50A0"
 HEADER2    = "4472C4"
@@ -83,16 +85,13 @@ def rolling_avg(series, window=3):
     return sum(series[-window:]) / min(window, len(series)) if series else 0
 
 def forecast(series, n=3, weight_linear=0.6):
-    """Blend linear regression and rolling average to project n periods ahead."""
-    if not series: return [0] * n
-    slope, intercept = linreg(series)
-    ra = rolling_avg(series)
-    base = len(series)
-    out = []
-    for i in range(n):
-        lin = intercept + slope * (base + i)
-        out.append(max(lin * weight_linear + ra * (1 - weight_linear), 0))
-    return out
+    """Project n periods ahead using the smart forecasting engine.
+
+    Kept as a thin wrapper so existing call sites automatically benefit from
+    method auto-selection (linear/Holt/Holt-Winters) instead of the old
+    fixed linear+rolling blend.
+    """
+    return _fc.forecast(series, n=n)
 
 def add_months(year, month, n=1):
     total = (year - 1) * 12 + (month - 1) + n
@@ -540,7 +539,7 @@ def generate_full_report(db) -> BytesIO:
             sh   = sum(mv[mid:]) / (len(mv) - mid)
             if   sh > fh * 1.1:  trend = "↑ Growing"
             elif sh < fh * 0.9:  trend = "↓ Declining"
-            else:                 trend = "= Stable"
+            else:                 trend = "→ Stable"
         elif len(mv) >= 2:
             trend = "↑ Growing" if mv[-1] >= mv[0] else "↓ Declining"
         else:
@@ -753,130 +752,8 @@ def generate_full_report(db) -> BytesIO:
     auto_width(wsbc)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # SHEET 15 — Demand Forecast
-    # ══════════════════════════════════════════════════════════════════════════
-    ws15 = wb.create_sheet("Demand Forecast")
-    ws15.append(["DEMAND FORECAST — 3-MONTH PROJECTION"])
-    ws15["A1"].font = Font(bold=True, size=14, color=PRIMARY)
-
-    confidence = "HIGH" if len(months_sorted) >= 9 else \
-                 "MEDIUM" if len(months_sorted) >= 4 else "LOW"
-    conf_color = GREEN_T if confidence == "HIGH" else \
-                 AMBER_T if confidence == "MEDIUM" else RED_T
-
-    ws15.append([f"Data: {len(months_sorted)} months · Confidence: {confidence} · "
-                 f"Method: Weighted blend of linear regression (60%) + 3-month rolling average (40%)"])
-    ws15.cell(2, 1).font = Font(italic=True, color="666666", size=10)
-    ws15.append(["Projections are statistical estimates only. "
-                 "Review alongside sales pipeline and known upcoming orders."])
-    ws15.cell(3, 1).font = Font(italic=True, color="999999", size=9)
-    ws15.append([])
-
-    rev_fc  = forecast(rev_series)
-    ord_fc  = forecast([monthly[k]["orders"] for k in months_sorted])
-    item_fc = forecast([monthly[k]["items"]   for k in months_sorted])
-
-    # ── Recent actuals ────────────────────────────────────────────────────────
-    section(ws15, "RECENT ACTUALS (last 12 months)")
-    h15a = ["Month", "# Orders", "Revenue", "Avg Order Value", "Units Sold"]
-    ws15.append(h15a); hdr(ws15, ws15.max_row, len(h15a))
-    for k in months_sorted[-12:]:
-        m = monthly[k]
-        avg = m["revenue"] / m["orders"] if m["orders"] else 0
-        ws15.append([mlabel(m["yr"], m["mo"]), m["orders"], m["revenue"], avg, m["items"]])
-        zar(ws15, ws15.max_row, [3, 4])
-    ws15.append([])
-
-    # ── 3-month projections ───────────────────────────────────────────────────
-    section(ws15, "3-MONTH FORWARD PROJECTION")
-    h15b = ["Period", "Projected Orders", "Projected Revenue",
-            "Projected Avg Order", "Projected Units", "vs Last Month", "Confidence"]
-    ws15.append(h15b); hdr(ws15, ws15.max_row, len(h15b), color=HEADER2)
-
-    last_rev = rev_series[-1] if rev_series else 0
-    if months_sorted:
-        ly, lm = monthly[months_sorted[-1]]["yr"], monthly[months_sorted[-1]]["mo"]
-    else:
-        ly, lm = today.year, today.month
-
-    for i in range(3):
-        fy, fm  = add_months(ly, lm, i + 1)
-        pr      = rev_fc[i]
-        po      = max(round(ord_fc[i]), 0)
-        pi      = max(round(item_fc[i]), 0)
-        pa      = pr / po if po else 0
-        vs_last = (pr - last_rev) / last_rev if last_rev else 0
-        ws15.append([mlabel(fy, fm), po, pr, pa, pi, vs_last, confidence])
-        ri = ws15.max_row
-        zar(ws15, ri, [3, 4])
-        ws15.cell(ri, 6).number_format = PCT_FMT
-        cf, ct = ((GREEN_F, GREEN_T) if confidence == "HIGH" else
-                  (AMBER_F, AMBER_T) if confidence == "MEDIUM" else
-                  (RED_F,   RED_T))
-        paint(ws15, ri, 7, cf, ct, bold=True)
-        if vs_last > 0.05:  paint(ws15, ri, 6, GREEN_F, GREEN_T)
-        elif vs_last < -0.05: paint(ws15, ri, 6, RED_F, RED_T)
-        last_rev = pr
-
-    ws15.append([])
-
-    # ── Product-level demand forecast ─────────────────────────────────────────
-    section(ws15, "PRODUCT-LEVEL DEMAND FORECAST (units/month)")
-    h15c = ["Product", "Avg Units/Month (actual)",
-            f"Forecast {mlabel(*add_months(ly, lm, 1))}",
-            f"Forecast {mlabel(*add_months(ly, lm, 2))}",
-            f"Forecast {mlabel(*add_months(ly, lm, 3))}",
-            "Trend"]
-    ws15.append(h15c); hdr(ws15, ws15.max_row, len(h15c), color=HEADER2)
-
-    for pname, pd in prod_sorted[:20]:          # top 20 products
-        mv = [pd["by_month"].get(k, 0) for k in months_sorted]
-        pfc = forecast(mv)
-        avg_act = sum(mv) / n_months
-        mv_last = mv[-1] if mv else 0
-        projected_last = pfc[2]
-        trend = ("↑" if projected_last > avg_act * 1.05 else
-                 "↓" if projected_last < avg_act * 0.95 else "=")
-        ws15.append([pname, round(avg_act, 1),
-                     round(pfc[0], 1), round(pfc[1], 1), round(pfc[2], 1), trend])
-        ri = ws15.max_row
-        if trend == "↑": paint(ws15, ri, 6, GREEN_F, GREEN_T, bold=True)
-        elif trend == "↓": paint(ws15, ri, 6, RED_F, RED_T, bold=True)
-
-    ws15.append([])
-
-    # ── Seasonal index ────────────────────────────────────────────────────────
-    if len(months_sorted) >= 6:
-        section(ws15, "SEASONAL CALENDAR INDEX  (index > 1.0 = above-average demand month)")
-        ws15.append(["Use to plan stock levels, staffing and marketing spend by time of year."])
-        ws15.cell(ws15.max_row, 1).font = Font(italic=True, color="666666", size=9)
-        ws15.append([])
-        h15d = ["Calendar Month", "Avg Revenue", "Seasonal Index",
-                "Seasons Observed", "Signal"]
-        ws15.append(h15d); hdr(ws15, ws15.max_row, len(h15d), color=HEADER2)
-        overall_avg = sum(rev_series) / len(rev_series)
-        cal = defaultdict(list)
-        for k in months_sorted:
-            cal[monthly[k]["mo"]].append(monthly[k]["revenue"])
-        for mo in range(1, 13):
-            vals = cal.get(mo, [])
-            if vals:
-                avg_r = sum(vals) / len(vals)
-                idx   = avg_r / overall_avg if overall_avg else 1
-                if   idx >= 1.15: sig, sf, st = "🔥 Peak — stock up",    GREEN_F, GREEN_T
-                elif idx >= 0.95: sig, sf, st = "✓ Normal",               "FFFFFF", "000000"
-                elif idx >= 0.80: sig, sf, st = "↓ Below average",        AMBER_F, AMBER_T
-                else:             sig, sf, st = "❄ Slow — reduce costs",  RED_F,   RED_T
-                ws15.append([MONTH_NAMES[mo - 1], avg_r, round(idx, 2), len(vals), sig])
-                ri = ws15.max_row
-                ws15.cell(ri, 2).number_format = ZAR_FMT
-                paint(ws15, ri, 5, sf, st)
-            else:
-                ws15.append([MONTH_NAMES[mo - 1], "No data", "—", 0, "No data yet"])
-
-    auto_width(ws15)
-
-    # ══════════════════════════════════════════════════════════════════════════
+    # (Former "Demand Forecast" sheet retired — superseded by the enterprise
+    # forecasting suite built at the end of this function.)
     # SHEET 16 — Delivery Performance
     # ══════════════════════════════════════════════════════════════════════════
     ws16 = wb.create_sheet("Delivery Performance")
@@ -1095,6 +972,58 @@ def generate_full_report(db) -> BytesIO:
             ws17.cell(ri, c).fill = PatternFill("solid", fgColor="F0F4FF")
 
     auto_width(ws17)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ENTERPRISE FORECASTING SUITE
+    # Executive Dashboard, Revenue/Product/Customer/Delivery forecasts with 95%
+    # confidence intervals, Forecast Accuracy, Revenue Risk, Inventory Planning
+    # and ABC Analysis. Built last, then reordered to the front of the workbook.
+    # ══════════════════════════════════════════════════════════════════════════
+    from exports.forecast_sheets import build_enterprise_forecasting
+
+    # ── Partial-month hygiene ───────────────────────────────────────────────
+    # The current calendar month is still in progress, so its bucket is
+    # incomplete and would drag every trend/forecast down (and inflate backtest
+    # error). Exclude it from the forecast *input* so projections start with the
+    # current month. Operational sheets keep the partial month — only the
+    # forecasting suite uses the trimmed series.
+    current_key = today.strftime("%Y-%m")
+    complete_months = [k for k in months_sorted if k < current_key]
+    if len(complete_months) >= 4:                 # keep enough history to model
+        fc_months = complete_months
+    else:
+        fc_months = months_sorted
+
+    if fc_months:
+        _ly, _lm = monthly[fc_months[-1]]["yr"], monthly[fc_months[-1]]["mo"]
+    else:
+        _ly, _lm = today.year, today.month
+
+    fc_rev_series = [monthly[k]["revenue"] for k in fc_months]
+
+    # TLB forecast input trimmed the same way
+    fc_tlb_keys   = [k for k in tlb_keys if k < current_key] or tlb_keys
+    fc_tlb_rev_s  = [tlb_m[k]["rev"] for k in fc_tlb_keys]
+    tlb_result = _fc.smart_forecast(fc_tlb_rev_s, h=6) if fc_tlb_rev_s else None
+
+    ctx = {
+        "today": today,
+        "months_sorted": fc_months,
+        "monthly": monthly,
+        "rev_series": fc_rev_series,
+        "prod_sorted": prod_sorted,
+        "cust_sorted": cust_sorted,
+        "deliveries": deliveries,
+        "tlbs": tlbs,
+        "active_orders": active,
+        "total_rev": total_rev,
+        "outstanding": total_rev - total_paid,
+        "n_months": max(len(fc_months), 1),
+        "ly": _ly, "lm": _lm,
+        "tlb_rev_series": fc_tlb_rev_s,
+        "tlb_result": tlb_result,
+    }
+    build_enterprise_forecasting(wb, ctx)
 
     # ── Save ──────────────────────────────────────────────────────────────────
     output = BytesIO()

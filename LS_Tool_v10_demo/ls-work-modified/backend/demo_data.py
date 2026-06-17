@@ -37,10 +37,15 @@ INDIVIDUALS = [
     ("Craig Williams",    "084 220 6677", "17 Harbour View, Bluewater Bay"),
     ("Zanele Mokoena",    "061 774 3309", "2 Begonia Cl, KwaDwesi"),
 ]
-STORES = [  # (name, payment behaviour)
-    ("Build It Kariega",        "good"),     # pays the account regularly
-    ("Cashbuild Uitenhage",     "slow"),     # pays late, partial
-    ("PE Hardware & Timber",    "overdue"),  # 60+ days outstanding
+STORES = [  # (name, payment behaviour, address)
+    ("Build It Kariega",     "good",    "45 Kamesh Rd, Kariega"),      # pays regularly
+    ("Cashbuild Uitenhage",  "slow",    "112 Caledon St, Uitenhage"),  # pays late, partial
+    ("PE Hardware & Timber", "overdue", "8 Burman Rd, Deal Party, Gqeberha"),  # 60+ days out
+]
+SITES = [  # building sites: repeat delivery addresses for the address-memory feature
+    "Erf 221, Penford Ext, Uitenhage",
+    "Site 7, Coega IDZ Zone 3",
+    "14 Old Cape Rd construction site, Greenbushes",
 ]
 
 class Api:
@@ -96,14 +101,21 @@ def main():
         existing[name.lower()] = c["id"]; return c["id"]
 
     people = [customer(n, p, a) for n, p, a in INDIVIDUALS]
-    stores = {name: (customer(name, ctype="hardware_store"), beh) for name, beh in STORES}
+    home_addr = {customer(n, p, a): a for n, p, a in INDIVIDUALS}
+    stores = {name: (customer(name, ctype="hardware_store", address=addr), beh, addr)
+              for name, beh, addr in STORES}
     print(f"{len(people)} individual customers, {len(stores)} hardware stores")
 
     # ── Order helper ──────────────────────────────────────────────────────────
     drivers = [("Lucky M.", "CJ 44 821"), ("Andre P.", "CJ 90 113"), ("Bongani S.", "CJ 12 558")]
     def make_order(cust_id, days_ago, n_items=None, transport=None, confirm=True,
-                   deliver_to_store=None, delivered=True):
-        body = {"customer_id": cust_id, "order_date": d(days_ago)}
+                   deliver_to_store=None, delivered=True, address=None):
+        # default delivery address: the customer's home; sometimes a building site
+        # (repeat site addresses exercise the address-history transport suggestions)
+        if address is None:
+            address = random.choice(SITES) if random.random() < 0.25 else home_addr.get(cust_id)
+        body = {"customer_id": cust_id, "order_date": d(days_ago),
+                "delivery_address": address}
         if transport: body["transport_price"] = transport
         o = api.post("/orders", body)
         for p, t in random.sample(tiers, n_items or random.randint(1, 3)):
@@ -142,7 +154,7 @@ def main():
     print(f"{n_orders} individual orders created")
 
     # ── Hardware stores: orders delivered to the store, account payments ─────
-    for name, (sid, behaviour) in stores.items():
+    for name, (sid, behaviour, store_addr) in stores.items():
         totals = 0
         for _ in range(random.randint(4, 6)):
             buyer = random.choice(people)
@@ -150,7 +162,7 @@ def main():
                    "slow": random.randint(20, 75),
                    "overdue": random.randint(45, 100)}[behaviour]
             o = make_order(buyer, age, transport=random.choice([None, 350, 500]),
-                           deliver_to_store=sid)
+                           deliver_to_store=sid, address=store_addr)
             totals += o["total_zar"]
         # account payment behaviour (oldest-first allocation through the real endpoint)
         pay_ratio = {"good": 0.85, "slow": 0.45, "overdue": 0.15}[behaviour]
@@ -163,7 +175,9 @@ def main():
 
     # ── A couple of open quotes (pipeline) ────────────────────────────────────
     for _ in range(3):
-        o = api.post("/orders", {"customer_id": random.choice(people), "order_date": d(random.randint(0, 4))})
+        qc = random.choice(people)
+        o = api.post("/orders", {"customer_id": qc, "order_date": d(random.randint(0, 4)),
+                                 "delivery_address": home_addr.get(qc)})
         for p, t in random.sample(tiers, 2):
             api.post(f"/orders/{o['id']}/items", {"product_id": p["id"], "price_tier_id": t["id"], "quantity": random.randint(1, 4)})
     print("3 open quotes")
@@ -188,6 +202,14 @@ def main():
     inst = api.get("/laybuys")[-1]["installments"]
     api.put(f"/laybuys/{api.get('/laybuys')[-1]['id']}/installments/{inst[0]['id']}/pay", {})
     print("1 lay-buy with first installment paid")
+
+    # ── A view-only driver login for testing roles ───────────────────────────
+    try:
+        api.post("/users", {"username": "driver", "full_name": "Demo Driver",
+                            "password": "driver1234", "role": "driver"})
+        print("driver login created: driver / driver1234 (view-only)")
+    except RuntimeError as e:
+        if "already exists" not in str(e): raise
 
     # ── Summary ───────────────────────────────────────────────────────────────
     tb = api.get("/gl/trial-balance")

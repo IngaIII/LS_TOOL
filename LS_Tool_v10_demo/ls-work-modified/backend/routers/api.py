@@ -35,6 +35,67 @@ def me(current_user=Depends(get_current_user)):
     return {"id": current_user.id, "username": current_user.username,
             "full_name": current_user.full_name, "role": current_user.role}
 
+# ── Users (admin only) ────────────────────────────────────────────────────────
+from auth import hash_password
+
+class UserIn(BaseModel):
+    username: str; full_name: str; password: str
+    role: str = "driver"
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str]=None; role: Optional[str]=None
+    is_active: Optional[bool]=None; password: Optional[str]=None
+
+def _check_role(r):
+    if r not in ("admin", "driver"):
+        raise HTTPException(400, "role must be 'admin' or 'driver'")
+
+@router.get("/users")
+def list_users(db: Session=Depends(get_db), _=Depends(require_admin)):
+    return [{"id":u.id,"username":u.username,"full_name":u.full_name,"role":u.role,
+             "is_active":u.is_active} for u in db.query(User).order_by(User.username).all()]
+
+@router.post("/users")
+def create_user(data: UserIn, db: Session=Depends(get_db), _=Depends(require_admin)):
+    _check_role(data.role)
+    uname = data.username.strip().lower()
+    if not uname or not data.full_name.strip():
+        raise HTTPException(400, "Username and full name are required")
+    if len(data.password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+    if db.query(User).filter(func.lower(User.username)==uname).first():
+        raise HTTPException(400, f"Username '{uname}' already exists")
+    u = User(username=uname, full_name=data.full_name.strip(),
+             password_hash=hash_password(data.password), role=data.role)
+    db.add(u); db.commit(); db.refresh(u)
+    return {"id":u.id,"username":u.username,"role":u.role}
+
+@router.put("/users/{uid}")
+def update_user(uid: int, data: UserUpdate, db: Session=Depends(get_db), current_user=Depends(require_admin)):
+    u = db.query(User).get(uid)
+    if not u: raise HTTPException(404, "User not found")
+    if data.role is not None:
+        _check_role(data.role)
+        if u.id == current_user.id and data.role != "admin":
+            raise HTTPException(400, "You cannot remove your own admin role")
+        u.role = data.role
+    if data.is_active is not None:
+        if u.id == current_user.id and not data.is_active:
+            raise HTTPException(400, "You cannot deactivate your own account")
+        if not data.is_active and u.role == "admin":
+            others = db.query(User).filter(User.role=="admin", User.is_active==True, User.id!=u.id).count()
+            if others == 0:
+                raise HTTPException(400, "Cannot deactivate the last active admin")
+        u.is_active = data.is_active
+    if data.full_name is not None and data.full_name.strip():
+        u.full_name = data.full_name.strip()
+    if data.password:
+        if len(data.password) < 6:
+            raise HTTPException(400, "Password must be at least 6 characters")
+        u.password_hash = hash_password(data.password)
+    db.commit()
+    return {"id":u.id,"username":u.username,"role":u.role,"is_active":u.is_active}
+
 # ── Customers ─────────────────────────────────────────────────────────────────
 class CustomerIn(BaseModel):
     name: str; phone: Optional[str]=None; email: Optional[str]=None
