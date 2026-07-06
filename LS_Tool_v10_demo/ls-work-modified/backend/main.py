@@ -86,6 +86,10 @@ def run_migrations():
         "ALTER TABLE deliveries ADD COLUMN hardware_store_name VARCHAR",
         "ALTER TABLE customers ADD COLUMN customer_type VARCHAR DEFAULT 'individual'",
         "ALTER TABLE deliveries ADD COLUMN hardware_store_customer_id INTEGER",
+        "ALTER TABLE orders ADD COLUMN hold_until_date DATE",
+        "ALTER TABLE orders ADD COLUMN hold_reason VARCHAR",
+        "ALTER TABLE order_items ADD COLUMN delivered_quantity INTEGER DEFAULT 0",
+        "ALTER TABLE order_items ADD COLUMN delivered_date DATE",
     ]
     with engine.connect() as conn:
         for sql in migrations:
