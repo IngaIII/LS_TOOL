@@ -448,6 +448,10 @@ body.role-driver #new-product-btn{display:none!important}
       </div></div>
       <div style="padding:24px 28px">
         <div class="stats-row" id="dash-stats"></div>
+        <div class="dash-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="card" style="border-color:var(--accent2)"><div class="section-header"><span class="section-title">🚚 Today's Deliveries</span><span style="font-size:11px;color:var(--txt3)" id="dash-today-date"></span></div><div id="dash-today-deliveries"></div></div>
+          <div class="card" style="border-color:var(--accent2)"><div class="section-header"><span class="section-title">📞 Due Now</span><span style="font-size:11px;color:var(--txt3)">follow-ups &amp; lay-buy collections</span></div><div id="dash-due"></div></div>
+        </div>
         <div class="dash-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="card"><div class="section-header"><span class="section-title">Awaiting Delivery</span><span style="font-size:11px;color:var(--txt3)">confirmed orders not yet delivered</span></div><div id="dash-orders"></div></div>
           <div class="card"><div class="section-header"><span class="section-title">On Hold</span><span style="font-size:11px;color:var(--txt3)">waiting for a call or a date</span></div><div id="dash-onhold"></div></div>
@@ -478,9 +482,10 @@ body.role-driver #new-product-btn{display:none!important}
         </div>
         <div class="mcards" id="orders-cards"></div>
         <div class="table-wrap has-cards"><table>
-          <thead><tr><th>Order #</th><th>Customer</th><th>Delivery Address</th><th>Date</th><th>Status</th><th>Subtotal</th><th>Transport</th><th>Discount</th><th>Total</th><th>Balance</th><th></th></tr></thead>
+          <thead><tr><th>Order #</th><th>Customer</th><th>Date</th><th>Status</th><th>Total</th><th>Balance</th><th></th></tr></thead>
           <tbody id="orders-tbody"></tbody>
         </table></div>
+        <div id="orders-pager" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap"></div>
       </div>
     </div>
 
@@ -1292,10 +1297,41 @@ let _customers=[], _products=[], _orders=[], _tlbs=[];
 // ── Dashboard ──────────────────────────────────────────────────────────────
 async function loadDashboard(){
   try{
-    const [s,orders,tlbs]=await Promise.all([api('/reports/summary'),api('/orders'),api('/tlb')]);
+    const [s,orders,tlbs,todayDel,laybuys]=await Promise.all([
+      api('/reports/summary'),api('/orders?status=confirmed,dispatched,on_hold'),api('/tlb'),
+      api('/deliveries/today'),api('/laybuys')]);
     _orders=orders; _tlbs=tlbs;
     const awaiting=orders.filter(o=>['confirmed','dispatched'].includes(o.status));
     const onHold=orders.filter(o=>o.status==='on_hold');
+    // ── Today row: deliveries scheduled for today ──
+    document.getElementById('dash-today-date').textContent=today();
+    document.getElementById('dash-today-deliveries').innerHTML=todayDel.map(d=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="min-width:0;flex:1"><div class="mono" style="color:var(--accent);font-size:12px">${d.order_number}</div>
+          <div style="font-size:12px;color:var(--txt2)">${esc(d.customer)}${d.driver_name?' · 🚛 '+esc(d.driver_name):''}</div>
+          ${d.delivery_address?`<div style="font-size:11px;color:var(--txt3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${esc(d.delivery_address)}</div>`:''}</div>
+        ${d.status==='completed'?'<span class="badge badge-green">✓ done</span>':`<button class="btn btn-success btn-sm" onclick="dashMarkDelivered(${d.id})">✓ Delivered</button>`}
+      </div>`).join('')||'<div class="empty"><p>No deliveries scheduled for today</p></div>';
+    // ── Today row: on-hold follow-ups due + lay-buy installments due within 7 days ──
+    const t=today();
+    const week=new Date(Date.now()+7*864e5).toISOString().split('T')[0];
+    const due=[];
+    onHold.filter(o=>o.hold_until_date&&o.hold_until_date<=t).forEach(o=>due.push({
+      when:o.hold_until_date,overdue:true,
+      html:`<div style="min-width:0;flex:1"><div class="mono" style="color:var(--accent);font-size:12px">${o.order_number}</div>
+        <div style="font-size:12px;color:var(--txt2)">${esc(o.customer_name)}</div>
+        <div style="font-size:11px;color:var(--red)">📞 follow up — was waiting until ${o.hold_until_date}</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="viewOrder(${o.id})">Open</button>`}));
+    laybuys.filter(lb=>lb.status==='active').forEach(lb=>lb.installments.filter(i=>!i.paid&&i.due_date<=week).forEach(i=>due.push({
+      when:i.due_date,overdue:i.due_date<=t,
+      html:`<div style="min-width:0;flex:1"><div class="mono" style="color:var(--purple);font-size:12px">LB-${lb.id} · ${lb.order_number||''}</div>
+        <div style="font-size:12px;color:var(--txt2)">${esc(lb.customer_name)} — installment ${i.installment_number}/${lb.months}</div>
+        <div style="font-size:11px;color:${i.due_date<=t?'var(--red)':'var(--amber)'}">💰 ${fmt(i.amount)} due ${i.due_date<=t?'now ('+i.due_date+')':i.due_date}</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="viewLaybuy(${lb.id})">Open</button>`})));
+    due.sort((a,b)=>a.when<b.when?-1:1);
+    document.getElementById('dash-due').innerHTML=due.slice(0,8).map(x=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">${x.html}</div>`).join('')
+      ||'<div class="empty"><p>Nothing due — all caught up 🎉</p></div>';
     document.getElementById('dash-stats').innerHTML=`
       <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value accent">${fmt(s.total_revenue)}</div></div>
       <div class="stat-card"><div class="stat-label">Total Paid</div><div class="stat-value green">${fmt(s.total_paid)}</div></div>
@@ -1327,32 +1363,45 @@ async function loadDashboard(){
 }
 
 // ── Orders ─────────────────────────────────────────────────────────────────
-let _allOrders=[];
-async function loadOrders(){
-  _allOrders=await api('/orders');_orders=_allOrders;renderOrders(_allOrders);
+let _allOrders=[],_ordersPage=1;
+const ORDERS_PAGE_SIZE=50;
+async function loadOrders(page){
+  page=page||_ordersPage||1;
+  const params=new URLSearchParams({page:page,page_size:ORDERS_PAGE_SIZE});
+  const q=(document.getElementById('order-search').value||'').trim();
+  const s=document.getElementById('order-status-filter').value;
+  if(q)params.set('search',q);
+  if(s)params.set('status',s);
+  const r=await api('/orders?'+params.toString());
+  _allOrders=r.items;_ordersPage=r.page;
+  renderOrders(r.items);
+  const from=r.total?(r.page-1)*r.page_size+1:0;
+  document.getElementById('orders-pager').innerHTML=r.total?`
+    <span style="font-size:12px;color:var(--txt3)">${from}–${from+r.items.length-1} of ${r.total} orders</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="btn btn-ghost btn-sm" ${r.page<=1?'disabled':''} onclick="loadOrders(${r.page-1})">← Prev</button>
+      <span style="font-size:12px;color:var(--txt2)">Page ${r.page} / ${r.pages}</span>
+      <button class="btn btn-ghost btn-sm" ${r.page>=r.pages?'disabled':''} onclick="loadOrders(${r.page+1})">Next →</button>
+    </div>`:'';
 }
 function renderOrders(list){
   document.getElementById('orders-tbody').innerHTML=list.map(o=>{
     const hasCustom=o.items&&o.items.some(i=>i.is_custom_price);
     const hasDiscount=(o.discount_pct>0||o.discount_amount>0);
     const hasTransport=o.transport_price>0;
-    return `<tr>
+    return `<tr style="cursor:pointer" onclick="viewOrder(${o.id})">
       <td><span class="mono" style="color:var(--accent)">${o.order_number}</span>${hasCustom?`<span class="custom-price-badge" title="Has custom item prices">CUSTOM</span>`:''}</td>
-      <td>${esc(o.customer_name)}</td>
-      <td style="font-size:12px;color:var(--txt2)">${esc(o.delivery_address)||'–'}</td>
+      <td>${esc(o.customer_name)}${o.delivery_address?`<div style="font-size:11px;color:var(--txt3);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${esc(o.delivery_address)}</div>`:''}</td>
       <td class="mono" style="font-size:12px">${o.order_date}</td>
-      <td>${statusBadge(o.status)}${deliveryProgress(o)}${holdInfo(o)}</td>
-      <td class="mono">${fmt(o.items_subtotal)}</td>
-      <td class="mono">${hasTransport?'<span style="color:var(--accent)">'+fmt(o.transport_price)+'</span>':'–'}</td>
-      <td>${hasDiscount?`<span style="color:var(--green);font-size:12px">${o.discount_pct>0?o.discount_pct.toFixed(1)+'%':''}${o.discount_pct>0&&o.discount_amount>0?' + ':''}${o.discount_amount>0?fmt(o.discount_amount):''}</span>`:'–'}</td>
+      <td>${statusBadge(o.status)}${deliveryProgress(o)}${hasTransport?'<span class="badge badge-blue" style="margin-left:4px" title="Transport '+fmt(o.transport_price)+'">🚚</span>':''}${hasDiscount?'<span class="badge badge-green" style="margin-left:4px" title="Discounted">%</span>':''}${holdInfo(o)}</td>
       <td class="mono" style="font-weight:600">${fmt(o.total_zar)}</td>
-      <td class="mono" style="color:${o.balance>0?'var(--amber)':'var(--green)'}">${fmt(o.balance)}</td>
-      <td class="td-actions">
+      <td class="mono" style="color:${o.balance>0?'var(--amber)':'var(--green)'}">${o.balance>0?fmt(o.balance):'Paid ✓'}</td>
+      <td class="td-actions" onclick="event.stopPropagation()">
         <button class="btn btn-ghost btn-sm" onclick="viewOrder(${o.id})">View</button>
         <button class="btn btn-ghost btn-sm" onclick="openPricingModal(${o.id})" title="Edit discounts & transport">💲</button>
       </td>
     </tr>`;
-  }).join('')||`<tr><td colspan="10" style="text-align:center;color:var(--txt3);padding:32px">No orders found</td></tr>`;
+  }).join('')||`<tr><td colspan="7" style="text-align:center;color:var(--txt3);padding:32px">No orders found</td></tr>`;
   const oc=document.getElementById('orders-cards');
   if(oc)oc.innerHTML=list.map(o=>`
     <div class="mcard" onclick="viewOrder(${o.id})">
@@ -1370,10 +1419,11 @@ function renderOrders(list){
       </div>
     </div>`).join('')||'<div class="empty-cards">No orders found</div>';
 }
+let _ordersFilterT=null;
 function filterOrders(){
-  const q=document.getElementById('order-search').value.toLowerCase();
-  const s=document.getElementById('order-status-filter').value;
-  renderOrders(_allOrders.filter(o=>(o.order_number+o.customer_name).toLowerCase().includes(q)&&(!s||o.status===s)));
+  // Search and status filter run server-side now (the list is paginated)
+  clearTimeout(_ordersFilterT);
+  _ordersFilterT=setTimeout(()=>loadOrders(1),300);
 }
 
 let _orderItems=[];
@@ -1519,6 +1569,7 @@ async function viewOrder(oid){
       ${o.hold_reason?`<div style="font-size:11px;color:var(--txt3);margin-top:2px">${esc(o.hold_reason)}</div>`:''}
     </div>`:''}
     ${o.delivery_address?`<div style="font-size:12px;color:var(--txt2);margin-bottom:12px">📍 ${esc(o.delivery_address)}</div>`:''}
+    ${o.delivery?`<div style="font-size:12px;color:var(--txt2);margin-bottom:12px">🚚 Delivery ${statusBadge(o.delivery.status)} · scheduled ${o.delivery.scheduled_date}${o.delivery.driver_name?' · '+esc(o.delivery.driver_name):''}</div>`:''}
     <div class="form-row" style="margin-bottom:14px">
       <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Items subtotal</div><div class="mono" style="font-size:15px;margin-top:3px">${fmt(o.items_subtotal)}</div></div>
       <div class="card-sm"><div style="font-size:11px;color:var(--txt3)">Total</div><div class="mono" style="font-size:15px;font-weight:600;margin-top:3px">${fmt(o.total_zar)}</div></div>
@@ -1564,6 +1615,12 @@ async function viewOrder(oid){
     ${o.payments.map(p=>`<tr><td>${p.payment_date}</td><td>${p.method}</td><td class="mono">${fmt(p.amount_zar)}</td></tr>`).join('')}
     </tbody></table></div>`:''}
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="printOrder(${o.id})">🖨 Print ${['quote','on_hold'].includes(o.status)?'Quote':'Invoice'}</button>
+      <button class="btn btn-ghost btn-sm" onclick="whatsappOrder(${o.id})">📲 WhatsApp</button>
+      ${o.balance>0.009&&o.status!=='cancelled'?`<button class="btn btn-success btn-sm" onclick="openPaymentForOrder(${o.id})">💰 Record Payment</button>`:''}
+      ${['confirmed','dispatched'].includes(o.status)&&!o.delivery?`<button class="btn btn-primary btn-sm" onclick="openDeliveryForOrder(${o.id})">🚚 Schedule Delivery</button>`:''}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${['quote','on_hold','confirmed','dispatched','delivered','cancelled'].map(s=>s==='on_hold'
         ?`<button class="btn btn-ghost btn-sm${o.status===s?' btn-primary':''}" onclick="ovToggleHold()">on hold</button>`
         :`<button class="btn btn-ghost btn-sm${o.status===s?' btn-primary':''}" onclick="setOrderStatus(${o.id},'${s}',this)">${s}</button>`).join('')}
@@ -1633,6 +1690,73 @@ async function ovPutOnHold(oid){
     }});
     toast('Order put on hold','success');closeModal('modal-order-view');loadOrders();loadDashboard();
   }catch(e){toast(e.message,'error');}
+}
+
+// ── Order actions: print / WhatsApp / payment / delivery ───────────────────
+async function printOrder(oid){
+  const o=await api('/orders/'+oid);
+  const isQuote=['quote','on_hold'].includes(o.status);
+  const docType=isQuote?'QUOTATION':'INVOICE';
+  const hasT=o.transport_price>0,hasD=o.discount_pct>0||o.discount_amount>0;
+  const w=window.open('','_blank');
+  if(!w){toast('Pop-up blocked — allow pop-ups to print','error');return;}
+  w.document.write(`<!DOCTYPE html><html><head><title>${docType} ${o.order_number}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:36px;font-size:13px;line-height:1.5}
+    h1{font-size:22px;margin:0 0 2px}.muted{color:#666;font-size:12px}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse;margin-top:14px}
+    th{background:#f0f0f0;text-align:left;padding:7px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ccc}
+    td{padding:7px 10px;border-bottom:1px solid #e5e5e5}
+    .r{text-align:right}.totals{margin-top:10px;margin-left:auto;width:280px}
+    .totals td{border:none;padding:3px 10px}.totals .grand td{border-top:2px solid #111;font-weight:bold;font-size:15px;padding-top:6px}
+    .foot{margin-top:32px;color:#888;font-size:11px;border-top:1px solid #ddd;padding-top:10px}
+    @media print{body{margin:12mm}}
+  </style></head><body>
+    <div class="head">
+      <div><h1>${docType}</h1><div class="muted">Logistics System</div></div>
+      <div style="text-align:right"><div style="font-size:15px;font-weight:bold">${o.order_number}</div>
+        <div class="muted">Date: ${o.order_date}</div><div class="muted">Status: ${o.status.replace('_',' ')}</div></div>
+    </div>
+    <div><strong>${esc(o.customer_name)}</strong>${o.customer_phone?'<br>'+esc(o.customer_phone):''}${o.delivery_address?'<br>Deliver to: '+esc(o.delivery_address):''}</div>
+    <table><thead><tr><th>Product</th><th>Tier</th><th class="r">Qty</th><th class="r">Unit Price</th><th class="r">Line Total</th></tr></thead><tbody>
+      ${o.items.map(i=>`<tr><td>${esc(i.product_name)}</td><td>${esc(i.tier_label)}</td><td class="r">${i.quantity}</td><td class="r">${fmt(i.unit_price_zar)}</td><td class="r">${fmt(i.line_total_zar)}</td></tr>`).join('')}
+    </tbody></table>
+    <table class="totals">
+      <tr><td>Items subtotal</td><td class="r">${fmt(o.items_subtotal)}</td></tr>
+      ${hasT?`<tr><td>Transport${o.transport_notes?' ('+esc(o.transport_notes)+')':''}</td><td class="r">${fmt(o.transport_price)}</td></tr>`:''}
+      ${o.discount_pct>0?`<tr><td>Discount ${o.discount_pct}%</td><td class="r">–${fmt((o.items_subtotal+o.transport_price)*(o.discount_pct/100))}</td></tr>`:''}
+      ${o.discount_amount>0?`<tr><td>Discount</td><td class="r">–${fmt(o.discount_amount)}</td></tr>`:''}
+      <tr class="grand"><td>TOTAL</td><td class="r">${fmt(o.total_zar)}</td></tr>
+      ${o.paid>0?`<tr><td>Paid</td><td class="r">–${fmt(o.paid)}</td></tr><tr><td><strong>Balance due</strong></td><td class="r"><strong>${fmt(o.balance)}</strong></td></tr>`:''}
+    </table>
+    ${o.notes?`<div style="margin-top:16px"><strong>Notes:</strong> ${esc(o.notes)}</div>`:''}
+    <div class="foot">${isQuote?'This quotation is valid for 14 days and is subject to stock availability.':'Thank you for your business.'} · Generated ${today()}</div>
+  <script>window.onload=function(){window.print();};<\/script></body></html>`);
+  w.document.close();
+}
+async function whatsappOrder(oid){
+  const o=await api('/orders/'+oid);
+  const isQuote=['quote','on_hold'].includes(o.status);
+  const lines=[`*${isQuote?'Quotation':'Invoice'} ${o.order_number}*`,`Date: ${o.order_date}`,''];
+  o.items.forEach(i=>lines.push(`• ${i.quantity} × ${i.product_name} (${i.tier_label}) — ${fmt(i.line_total_zar)}`));
+  if(o.transport_price>0)lines.push(`• Transport — ${fmt(o.transport_price)}`);
+  if(o.discount_pct>0||o.discount_amount>0)lines.push(`• Discount${o.discount_pct>0?' '+o.discount_pct+'%':''}${o.discount_amount>0?' –'+fmt(o.discount_amount):''}`);
+  lines.push('',`*Total: ${fmt(o.total_zar)}*`);
+  if(o.paid>0)lines.push(`Paid: ${fmt(o.paid)}`,`Balance due: ${fmt(o.balance)}`);
+  if(o.delivery_address)lines.push('',`Deliver to: ${o.delivery_address}`);
+  // wa.me needs country format: strip non-digits, turn leading 0 into 27 (South Africa)
+  let phone=(o.customer_phone||'').replace(/\D/g,'');
+  if(phone.startsWith('0'))phone='27'+phone.slice(1);
+  const text=encodeURIComponent(lines.join('\n').replace(/ /g,' '));
+  window.open(phone?`https://wa.me/${phone}?text=${text}`:`https://wa.me/?text=${text}`,'_blank');
+}
+function openPaymentForOrder(oid){
+  closeModal('modal-order-view');
+  openNewPayment(null,oid);
+}
+function openDeliveryForOrder(oid){
+  closeModal('modal-order-view');
+  openNewDelivery(oid);
 }
 
 // ── Pricing Edit Modal ─────────────────────────────────────────────────────
@@ -2098,7 +2222,7 @@ function onDeliveryStoreChange(){
   document.getElementById('d-store-name').style.display=
     document.getElementById('d-store-select').value==='__other__'?'block':'none';
 }
-function openNewDelivery(){
+function openNewDelivery(presetOrderId){
   api('/stores').then(stores=>{
     document.getElementById('d-store-select').innerHTML='<option value="">Select store account...</option>'
       +stores.map(st=>`<option value="${st.id}">${esc(st.name)}</option>`).join('')
@@ -2119,6 +2243,7 @@ function openNewDelivery(){
     orders.filter(o=>['confirmed','dispatched'].includes(o.status)).forEach(o=>{
       sel.innerHTML+=`<option value="${o.id}">${o.order_number} – ${esc(o.customer_name)}${o.delivery_address?' ('+esc(o.delivery_address.substring(0,30))+'...)':''}</option>`;
     });
+    if(presetOrderId){sel.value=presetOrderId;onDeliveryOrderChange();}
   });
   hideErr('del-error');openModal('modal-delivery');
 }
@@ -2149,6 +2274,12 @@ async function saveDelivery(){
     }});
     toast('Delivery scheduled','success');closeModal('modal-delivery');loadDeliveries();
   }catch(e){showErr('del-error',e.message);}
+}
+async function dashMarkDelivered(id){
+  try{
+    await api('/deliveries/'+id,{method:'PUT',body:{status:'completed',actual_date:today()}});
+    toast('Delivery marked as completed','success');loadDashboard();
+  }catch(e){toast(e.message,'error');}
 }
 async function markDelivered(id){
   try{
@@ -2187,12 +2318,19 @@ function onPayStoreChange(){
   const hint=document.getElementById('pay-store-hint');
   hint.textContent=v&&_storeBalances[v]!=null?`Outstanding balance: ${fmt(_storeBalances[v])}`:'';
 }
-function openNewPayment(presetStoreId){
+function openNewPayment(presetStoreId,presetOrderId){
   document.getElementById('pay-date').value=today();
   document.getElementById('pay-amount').value='';document.getElementById('pay-ref').value='';
   document.getElementById('pay-type').value=presetStoreId?'store':'order';onPayTypeChange();
   const os=document.getElementById('pay-order');os.innerHTML='<option value="">Select order...</option>';
-  api('/orders').then(orders=>orders.forEach(o=>{os.innerHTML+=`<option value="${o.id}">${o.order_number} – ${esc(o.customer_name)} (${fmt(o.balance)} due)</option>`;}));
+  api('/orders').then(orders=>{
+    orders.forEach(o=>{os.innerHTML+=`<option value="${o.id}">${o.order_number} – ${esc(o.customer_name)} (${fmt(o.balance)} due)</option>`;});
+    if(presetOrderId){
+      os.value=presetOrderId;
+      const o=orders.find(x=>x.id===presetOrderId);
+      if(o&&o.balance>0)document.getElementById('pay-amount').value=o.balance.toFixed(2);
+    }
+  });
   const ts=document.getElementById('pay-tlb');ts.innerHTML='<option value="">Select booking...</option>';
   api('/tlb').then(tlbs=>tlbs.forEach(t=>{ts.innerHTML+=`<option value="${t.id}">TLB-${t.id} – ${esc(t.customer)} (${fmt(t.balance)} due)</option>`;}));
   const ss=document.getElementById('pay-store');ss.innerHTML='<option value="">Select store...</option>';

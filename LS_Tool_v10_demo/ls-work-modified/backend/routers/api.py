@@ -264,11 +264,16 @@ def order_dict(o):
     items_total = len(o.items)
     items_delivered = sum(1 for i in o.items if (i.delivered_quantity or 0) >= i.quantity)
     items_partial = sum(1 for i in o.items if 0 < (i.delivered_quantity or 0) < i.quantity)
+    d = o.delivery
     return {
         "id":o.id,"order_number":o.order_number,"customer_id":o.customer_id,
-        "customer_name":o.customer.name,"order_date":str(o.order_date),
+        "customer_name":o.customer.name,"customer_phone":o.customer.phone,
+        "order_date":str(o.order_date),
         "status":o.status,"total_zar":o.total_zar,"paid":paid,"balance":o.total_zar-paid,
         "delivery_address":o.delivery_address,"notes":o.notes,
+        # Scheduled delivery summary (None if nothing scheduled yet)
+        "delivery": ({"id": d.id, "status": d.status, "scheduled_date": str(d.scheduled_date),
+                      "driver_name": d.driver_name} if d else None),
         # On-hold info
         "hold_until_date": str(o.hold_until_date) if o.hold_until_date else None,
         "hold_reason": o.hold_reason,
@@ -298,10 +303,30 @@ def order_dict(o):
     }
 
 @router.get("/orders")
-def list_orders(status: Optional[str]=None, db: Session=Depends(get_db), _=Depends(get_current_user)):
+def list_orders(status: Optional[str]=None, search: Optional[str]=None,
+                page: Optional[int]=None, page_size: int=50,
+                db: Session=Depends(get_db), _=Depends(get_current_user)):
+    """List orders. `status` accepts a comma-separated list; `search` matches the
+    order number or customer name. Without `page` the full array is returned
+    (back-compat for dropdowns); with `page` a paged envelope is returned."""
     q = db.query(Order)
-    if status: q = q.filter(Order.status==status)
-    return [order_dict(o) for o in q.order_by(Order.order_date.desc()).all()]
+    if status:
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        q = q.filter(Order.status.in_(statuses))
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        q = (q.join(Customer, Order.customer_id == Customer.id)
+             .filter(Order.order_number.ilike(like) | Customer.name.ilike(like)))
+    q = q.order_by(Order.order_date.desc(), Order.id.desc())
+    if page is None:
+        return [order_dict(o) for o in q.all()]
+    page = max(1, page)
+    page_size = max(1, min(page_size, 200))
+    total = q.count()
+    items = q.offset((page - 1) * page_size).limit(page_size).all()
+    return {"total": total, "page": page, "page_size": page_size,
+            "pages": max(1, -(-total // page_size)),
+            "items": [order_dict(o) for o in items]}
 
 @router.post("/orders")
 def create_order(data: OrderIn, db: Session=Depends(get_db), current_user=Depends(get_current_user)):
