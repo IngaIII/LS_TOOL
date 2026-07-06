@@ -93,8 +93,13 @@ def post_order_confirmed(db: Session, order: Order, user_id: int):
     db.add_all(entries)
     db.commit()
 
-def post_order_cancelled(db: Session, order: Order, user_id: int):
-    """Reverse journal entries when an order is cancelled."""
+def post_order_cancelled(db: Session, order: Order, user_id: int, reason: str = "cancelled"):
+    """Reverse the confirmation journal entries for an order.
+
+    Used when an order is cancelled, put back on hold/quote, or just before
+    re-posting after an edit to a confirmed order. Must be called while the
+    order's items/pricing still match what was originally posted.
+    """
     ar_account = get_account(db, "1100")
     entry_date = date.today()
     ref = f"{order.order_number}-REV"
@@ -120,7 +125,7 @@ def post_order_cancelled(db: Session, order: Order, user_id: int):
     entries.append(JournalEntry(
         transaction_ref=ref, entry_date=entry_date,
         account_id=ar_account.id, debit_zar=0.0, credit_zar=order.total_zar,
-        description=f"Reversal - Order {order.order_number} cancelled",
+        description=f"Reversal - Order {order.order_number} ({reason})",
         source_type="order", source_id=order.id, posted_by=user_id, is_manual=False,
     ))
     for code, amount in revenue_map.items():

@@ -53,7 +53,9 @@ class Order(Base):
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     order_date = Column(Date, nullable=False)
-    status = Column(String, default="quote")
+    status = Column(String, default="quote")  # quote, on_hold, confirmed, dispatched, delivered, cancelled
+    hold_until_date = Column(Date)                      # on-hold orders: follow up on this date (None = wait for customer call)
+    hold_reason = Column(String)                        # e.g. "Waiting for customer to confirm site access"
     delivery_address = Column(Text)
     notes = Column(Text)
     total_zar = Column(Float, default=0.0)
@@ -82,6 +84,9 @@ class OrderItem(Base):
     # Custom pricing: if set, overrides the tier price for this line item
     custom_unit_price = Column(Float)                  # override price per unit (None = use tier price)
     custom_price_reason = Column(String)               # reason for override, e.g. "Special deal"
+    # Partial delivery tracking: how much of this line the customer has already taken
+    delivered_quantity = Column(Integer, default=0)    # 0..quantity
+    delivered_date = Column(Date)                      # date of the most recent hand-over
     order = relationship("Order", back_populates="items")
     product = relationship("Product")
     price_tier = relationship("PriceTier")

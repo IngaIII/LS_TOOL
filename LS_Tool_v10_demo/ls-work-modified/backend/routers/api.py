@@ -261,11 +261,22 @@ def recalculate_order_total(o) -> float:
 def order_dict(o):
     paid = sum(p.amount_zar for p in o.payments)
     items_subtotal = sum(i.line_total_zar for i in o.items)
+    items_total = len(o.items)
+    items_delivered = sum(1 for i in o.items if (i.delivered_quantity or 0) >= i.quantity)
+    items_partial = sum(1 for i in o.items if 0 < (i.delivered_quantity or 0) < i.quantity)
     return {
         "id":o.id,"order_number":o.order_number,"customer_id":o.customer_id,
         "customer_name":o.customer.name,"order_date":str(o.order_date),
         "status":o.status,"total_zar":o.total_zar,"paid":paid,"balance":o.total_zar-paid,
         "delivery_address":o.delivery_address,"notes":o.notes,
+        # On-hold info
+        "hold_until_date": str(o.hold_until_date) if o.hold_until_date else None,
+        "hold_reason": o.hold_reason,
+        # Partial delivery progress
+        "items_total": items_total,
+        "items_delivered": items_delivered,
+        "items_partial": items_partial,
+        "fully_delivered": items_total > 0 and items_delivered == items_total,
         # Custom pricing summary
         "items_subtotal": items_subtotal,
         "transport_price": o.transport_price or 0.0,
@@ -279,6 +290,9 @@ def order_dict(o):
             "custom_unit_price":i.custom_unit_price,"custom_price_reason":i.custom_price_reason,
             "is_custom_price": i.custom_unit_price is not None,
             "tier_price_zar": i.price_tier.price_zar,
+            "delivered_quantity": i.delivered_quantity or 0,
+            "remaining_quantity": i.quantity - (i.delivered_quantity or 0),
+            "delivered_date": str(i.delivered_date) if i.delivered_date else None,
         } for i in o.items],
         "payments":[{"id":p.id,"amount_zar":p.amount_zar,"payment_date":str(p.payment_date),"method":p.method} for p in o.payments]
     }
@@ -325,51 +339,110 @@ def get_order(oid: int, db: Session=Depends(get_db), _=Depends(get_current_user)
     return order_dict(o)
 
 @router.put("/orders/{oid}/pricing")
-def update_order_pricing(oid: int, body: dict, db: Session=Depends(get_db), _=Depends(get_current_user)):
+def update_order_pricing(oid: int, body: dict, db: Session=Depends(get_db), current_user=Depends(get_current_user)):
     """Update discount and transport pricing on an order. Recalculates total."""
     o = db.query(Order).get(oid)
     if not o: raise HTTPException(404)
-    if o.status not in ("quote", "confirmed"):
-        raise HTTPException(400, "Pricing can only be updated on quote or confirmed orders")
+    if o.status not in ("quote", "on_hold", "confirmed"):
+        raise HTTPException(400, "Pricing can only be updated on quote, on-hold or confirmed orders")
+    was_posted = o.status in GL_POSTED_STATUSES
+    if was_posted:
+        gl.post_order_cancelled(db, o, current_user.id, reason="pricing changed")
     allowed = {"discount_amount", "discount_pct", "discount_reason", "transport_price", "transport_notes"}
     for k, v in body.items():
         if k in allowed:
             setattr(o, k, v)
     o.total_zar = recalculate_order_total(o)
     db.commit()
+    db.refresh(o)
+    if was_posted:
+        gl.post_order_confirmed(db, o, current_user.id)
     return order_dict(o)
 
+
+# Statuses whose revenue has been posted to the ledger
+GL_POSTED_STATUSES = {"confirmed", "dispatched", "delivered"}
 
 @router.put("/orders/{oid}/status")
 def update_status(oid: int, body: dict, db: Session=Depends(get_db), current_user=Depends(get_current_user)):
     o = db.query(Order).get(oid)
     if not o: raise HTTPException(404)
     new_status = body.get("status")
-    valid = {"quote","confirmed","dispatched","delivered","cancelled"}
+    valid = {"quote","on_hold","confirmed","dispatched","delivered","cancelled"}
     if new_status not in valid: raise HTTPException(400, "Invalid status")
     old_status = o.status
+    was_posted = old_status in GL_POSTED_STATUSES
+    # Reverse the ledger BEFORE mutating anything, while items/pricing still match the posting
+    if was_posted and new_status not in GL_POSTED_STATUSES:
+        gl.post_order_cancelled(db, o, current_user.id, reason=new_status.replace("_", " "))
     o.status = new_status
+    if new_status == "on_hold":
+        # Wait until the customer calls, or until the follow-up date they set
+        hold_date = body.get("hold_until_date")
+        o.hold_until_date = date.fromisoformat(hold_date) if hold_date else None
+        o.hold_reason = body.get("hold_reason")
+    else:
+        o.hold_until_date = None
+        o.hold_reason = None
+    if new_status == "delivered":
+        # The whole order went out: mark every line as fully taken
+        for i in o.items:
+            if (i.delivered_quantity or 0) < i.quantity:
+                i.delivered_quantity = i.quantity
+                i.delivered_date = date.today()
     db.commit()
-    # GL auto-posting
     db.refresh(o)
-    if new_status == "confirmed" and old_status != "confirmed":
+    if new_status in GL_POSTED_STATUSES and not was_posted:
         gl.post_order_confirmed(db, o, current_user.id)
-    elif new_status == "cancelled" and old_status == "confirmed":
-        gl.post_order_cancelled(db, o, current_user.id)
     return order_dict(o)
 
-@router.post("/orders/{oid}/items")
-def add_item(oid: int, data: OrderItemIn, db: Session=Depends(get_db), _=Depends(get_current_user)):
+@router.put("/orders/{oid}/items/{iid}/delivered")
+def mark_item_delivered(oid: int, iid: int, body: dict, db: Session=Depends(get_db), _=Depends(get_current_user)):
+    """Record how much of a line item the customer has taken so far (partial deliveries)."""
     o = db.query(Order).get(oid)
     if not o: raise HTTPException(404)
-    if o.status != "quote":
-        raise HTTPException(400, "Items can only be changed while the order is a quote (the ledger is posted on confirmation)")
+    if o.status not in ("confirmed", "dispatched", "delivered"):
+        raise HTTPException(400, "Deliveries can only be recorded on confirmed, dispatched or delivered orders")
+    item = db.query(OrderItem).filter_by(id=iid, order_id=oid).first()
+    if not item: raise HTTPException(404, "Order item not found")
+    try:
+        qty = int(body.get("delivered_quantity"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "delivered_quantity must be a whole number")
+    if qty < 0 or qty > item.quantity:
+        raise HTTPException(400, f"Delivered quantity must be between 0 and {item.quantity}")
+    item.delivered_quantity = qty
+    item.delivered_date = date.today() if qty > 0 else None
+    db.flush()
+    # Keep the order status in sync with what's physically been handed over
+    all_done = all((i.delivered_quantity or 0) >= i.quantity for i in o.items)
+    if all_done and o.status in ("confirmed", "dispatched"):
+        o.status = "delivered"
+    elif not all_done and o.status == "delivered":
+        o.status = "confirmed"  # a correction reopened the order
+    db.commit()
+    db.refresh(o)
+    return order_dict(o)
+
+# Item edits are allowed pre-dispatch. On confirmed orders the ledger posting is
+# reversed and re-posted so the books stay in sync with the new total.
+ITEM_EDIT_STATUSES = ("quote", "on_hold", "confirmed")
+
+@router.post("/orders/{oid}/items")
+def add_item(oid: int, data: OrderItemIn, db: Session=Depends(get_db), current_user=Depends(get_current_user)):
+    o = db.query(Order).get(oid)
+    if not o: raise HTTPException(404)
+    if o.status not in ITEM_EDIT_STATUSES:
+        raise HTTPException(400, "Items can only be changed on quote, on-hold or confirmed orders")
     if data.quantity <= 0:
         raise HTTPException(400, "Quantity must be at least 1")
     tier = db.query(PriceTier).get(data.price_tier_id)
     if not tier: raise HTTPException(404, "Tier not found")
     if tier.product_id != data.product_id:
         raise HTTPException(400, "Selected price tier does not belong to that product")
+    was_posted = o.status in GL_POSTED_STATUSES
+    if was_posted:
+        gl.post_order_cancelled(db, o, current_user.id, reason="items changed")
     # Use custom price if provided, otherwise fall back to tier price
     effective_price = data.custom_unit_price if data.custom_unit_price is not None else tier.price_zar
     item = OrderItem(
@@ -386,20 +459,31 @@ def add_item(oid: int, data: OrderItemIn, db: Session=Depends(get_db), _=Depends
     db.flush()  # assign item.id so it appears in o.items
     o.total_zar = recalculate_order_total(o)
     db.commit()
+    db.refresh(o)
+    if was_posted:
+        gl.post_order_confirmed(db, o, current_user.id)
     return order_dict(o)
 
 @router.delete("/orders/{oid}/items/{iid}")
-def remove_item(oid: int, iid: int, db: Session=Depends(get_db), _=Depends(get_current_user)):
+def remove_item(oid: int, iid: int, db: Session=Depends(get_db), current_user=Depends(get_current_user)):
     o = db.query(Order).get(oid)
     if not o: raise HTTPException(404)
-    if o.status != "quote":
-        raise HTTPException(400, "Items can only be changed while the order is a quote (the ledger is posted on confirmation)")
+    if o.status not in ITEM_EDIT_STATUSES:
+        raise HTTPException(400, "Items can only be changed on quote, on-hold or confirmed orders")
     item = db.query(OrderItem).filter_by(id=iid, order_id=oid).first()
     if not item: raise HTTPException(404)
+    if (item.delivered_quantity or 0) > 0:
+        raise HTTPException(400, "This item has already been (partly) taken by the customer and cannot be removed")
+    was_posted = o.status in GL_POSTED_STATUSES
+    if was_posted:
+        gl.post_order_cancelled(db, o, current_user.id, reason="items changed")
     db.delete(item)
     db.flush()
     o.total_zar = recalculate_order_total(o)
     db.commit()
+    db.refresh(o)
+    if was_posted:
+        gl.post_order_confirmed(db, o, current_user.id)
     return order_dict(o)
 
 # ── Deliveries ────────────────────────────────────────────────────────────────
