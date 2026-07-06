@@ -264,6 +264,10 @@ body.role-driver #new-product-btn{display:none!important}
 .sheet-user{display:flex;align-items:center;justify-content:space-between;padding:12px 8px;margin-top:6px;border-top:1px solid var(--border);font-size:12px;color:var(--txt3)}
 
 /* ── Phone layout ── */
+/* Dashboard cards: count badges always, collapse behaviour is mobile-only */
+.dash-count{display:inline-flex;min-width:18px;justify-content:center;padding:1px 7px;border-radius:10px;background:var(--bg4);color:var(--txt2);font-size:11px;font-weight:600;margin-left:8px;vertical-align:1px}
+.dash-chev{display:none;color:var(--txt3);font-size:12px;margin-left:8px;transition:transform .15s}
+
 @media(max-width:700px){
   #sidebar{display:none}
   #bottom-nav{display:flex}
@@ -275,7 +279,18 @@ body.role-driver #new-product-btn{display:none!important}
   /* user-requested mobile removals */
   #dash-stats{display:none!important}
   #stores-trend{display:none!important}
-  .dash-grid{grid-template-columns:1fr!important}
+  .dash-grid{grid-template-columns:1fr!important;gap:10px!important;margin-bottom:10px!important}
+  /* Compact dashboard: hide empty cards, collapse the secondary ones behind tappable headers */
+  .card{padding:14px 16px}
+  .dash-card.is-empty{display:none}
+  .dash-collapsible .section-header{cursor:pointer}
+  .dash-collapsible.collapsed .section-header{margin-bottom:0}
+  .dash-chev{display:inline-block}
+  .dash-card .dash-sub{display:none}
+  .dash-card .section-title{white-space:nowrap}
+  .dash-collapsible.collapsed>div:not(.section-header){display:none}
+  .dash-collapsible.collapsed .dash-chev{transform:rotate(-90deg)}
+  #dash-allclear.show{display:block!important}
   /* tables with card alternatives -> cards */
   .has-cards{display:none!important}
   .mcards{display:block}
@@ -448,14 +463,15 @@ body.role-driver #new-product-btn{display:none!important}
       </div></div>
       <div style="padding:24px 28px">
         <div class="stats-row" id="dash-stats"></div>
+        <div id="dash-allclear" style="display:none;text-align:center;color:var(--txt3);padding:28px 10px;font-size:13px">Nothing needs attention right now 🎉</div>
         <div class="dash-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-          <div class="card" style="border-color:var(--accent2)"><div class="section-header"><span class="section-title">🚚 Today's Deliveries</span><span style="font-size:11px;color:var(--txt3)" id="dash-today-date"></span></div><div id="dash-today-deliveries"></div></div>
-          <div class="card" style="border-color:var(--accent2)"><div class="section-header"><span class="section-title">📞 Due Now</span><span style="font-size:11px;color:var(--txt3)">follow-ups &amp; lay-buy collections</span></div><div id="dash-due"></div></div>
+          <div class="card dash-card" id="card-today" style="border-color:var(--accent2)"><div class="section-header"><span class="section-title">🚚 Today's Deliveries<span class="dash-count" id="count-today"></span></span><span class="dash-sub" style="font-size:11px;color:var(--txt3)" id="dash-today-date"></span></div><div id="dash-today-deliveries"></div></div>
+          <div class="card dash-card" id="card-due" style="border-color:var(--accent2)"><div class="section-header"><span class="section-title">📞 Due Now<span class="dash-count" id="count-due"></span></span><span class="dash-sub" style="font-size:11px;color:var(--txt3)">follow-ups &amp; lay-buy collections</span></div><div id="dash-due"></div></div>
         </div>
         <div class="dash-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="card"><div class="section-header"><span class="section-title">Awaiting Delivery</span><span style="font-size:11px;color:var(--txt3)">confirmed orders not yet delivered</span></div><div id="dash-orders"></div></div>
-          <div class="card"><div class="section-header"><span class="section-title">On Hold</span><span style="font-size:11px;color:var(--txt3)">waiting for a call or a date</span></div><div id="dash-onhold"></div></div>
-          <div class="card"><div class="section-header"><span class="section-title">Recent TLB Bookings</span></div><div id="dash-tlb"></div></div>
+          <div class="card dash-card dash-collapsible collapsed" id="card-awaiting"><div class="section-header" onclick="toggleDashCard(this)"><span class="section-title">Awaiting Delivery<span class="dash-count" id="count-awaiting"></span></span><span><span class="dash-sub" style="font-size:11px;color:var(--txt3)">confirmed orders not yet delivered</span><span class="dash-chev">▾</span></span></div><div id="dash-orders"></div></div>
+          <div class="card dash-card dash-collapsible collapsed" id="card-onhold"><div class="section-header" onclick="toggleDashCard(this)"><span class="section-title">On Hold<span class="dash-count" id="count-onhold"></span></span><span><span class="dash-sub" style="font-size:11px;color:var(--txt3)">waiting for a call or a date</span><span class="dash-chev">▾</span></span></div><div id="dash-onhold"></div></div>
+          <div class="card dash-card dash-collapsible collapsed" id="card-tlb"><div class="section-header" onclick="toggleDashCard(this)"><span class="section-title">Recent TLB Bookings<span class="dash-count" id="count-tlb"></span></span><span class="dash-chev">▾</span></div><div id="dash-tlb"></div></div>
         </div>
       </div>
     </div>
@@ -1332,6 +1348,14 @@ async function loadDashboard(){
     document.getElementById('dash-due').innerHTML=due.slice(0,8).map(x=>`
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">${x.html}</div>`).join('')
       ||'<div class="empty"><p>Nothing due — all caught up 🎉</p></div>';
+    // Count badges; on mobile empty cards hide and secondary cards collapse
+    setDashCount('card-today','count-today',todayDel.length);
+    setDashCount('card-due','count-due',due.length);
+    setDashCount('card-awaiting','count-awaiting',awaiting.length);
+    setDashCount('card-onhold','count-onhold',onHold.length);
+    setDashCount('card-tlb','count-tlb',tlbs.length);
+    document.getElementById('dash-allclear').classList.toggle('show',
+      !todayDel.length&&!due.length&&!awaiting.length&&!onHold.length&&!tlbs.length);
     document.getElementById('dash-stats').innerHTML=`
       <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value accent">${fmt(s.total_revenue)}</div></div>
       <div class="stat-card"><div class="stat-label">Total Paid</div><div class="stat-value green">${fmt(s.total_paid)}</div></div>
@@ -2274,6 +2298,15 @@ async function saveDelivery(){
     }});
     toast('Delivery scheduled','success');closeModal('modal-delivery');loadDeliveries();
   }catch(e){showErr('del-error',e.message);}
+}
+// Mobile-only: dashboard cards collapse behind their headers (no-op on desktop)
+function toggleDashCard(h){
+  if(window.innerWidth>700)return;
+  h.closest('.dash-card').classList.toggle('collapsed');
+}
+function setDashCount(cardId,countId,n){
+  const c=document.getElementById(countId);if(c)c.textContent=n;
+  const card=document.getElementById(cardId);if(card)card.classList.toggle('is-empty',!n);
 }
 async function dashMarkDelivered(id){
   try{
