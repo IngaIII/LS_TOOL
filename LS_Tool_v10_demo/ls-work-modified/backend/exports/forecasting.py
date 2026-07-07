@@ -2,21 +2,31 @@
 Forecasting engine for the logistics workbook.
 
 Pure-Python (stdlib only) so it adds no deployment dependencies. Provides a
-"smart" forecaster that selects a method based on how much history exists:
+"smart" forecaster that selects a method based on how much history exists and
+how intermittent the series is:
 
-    < 6 points   -> Linear regression blended with a rolling average
-    6 - 11       -> Holt's linear trend (double exponential smoothing)
-    12 - 23      -> Holt-Winters additive (triple exponential smoothing)
-    24+          -> Holt-Winters multiplicative
+    < 6 points          -> Linear regression blended with a rolling average
+    intermittent        -> Croston's method (SBA variant)
+    6 - 11              -> Holt's linear trend (double exponential smoothing)
+    12 - 23             -> Holt-Winters additive (triple exponential smoothing)
+    24+                 -> Holt-Winters multiplicative
 
-It also returns 95% confidence intervals, in-sample fitted values, an
-out-of-sample (holdout) accuracy backtest (MAPE / RMSE / MAE / Bias), a
-confidence rating and an implied growth rate.
+The length ladder decides which methods are *eligible*; the final pick is made
+by rolling-origin validation (average miss over several held-out windows), so
+one noisy month cannot flip the choice.
 
-Smoothing parameters (alpha/beta/gamma) are chosen by a small grid search that
-minimises in-sample squared error, so the model adapts to each series instead
-of using fixed guesses.
+It also returns 95% confidence intervals (widened by the ratio of measured
+out-of-sample error to in-sample error, so the band reflects real accuracy,
+not the optimism of a fitted model), an in-sample fit, an honest backtest
+(the method is re-selected on the training split only, so the holdout never
+influences the score), WAPE / MAPE / RMSE / MAE / Bias, a confidence rating
+and an implied growth rate.
+
+Smoothing parameters (alpha/beta/gamma/phi) are chosen by a small grid search
+per series. Fits are memoised, so repeated calls across workbook sheets are
+cheap.
 """
+from functools import lru_cache
 from math import sqrt
 
 # ── basic stats ───────────────────────────────────────────────────────────────
@@ -48,6 +58,25 @@ def rolling_avg(series, window=3):
     w = series[-window:]
     return sum(w) / len(w)
 
+# ── guard rails ───────────────────────────────────────────────────────────────
+def _runaway_cap(series):
+    """A generous ceiling no forecast should exceed, derived from history."""
+    if not series:
+        return 0.0
+    return max(max(series) * 2.5, rolling_avg(series, 3) * 3.0)
+
+def _clean_preds(pred, history):
+    """Floor at zero and apply the runaway cap implied by the given history.
+
+    Used on validation/backtest predictions as well as the live forecast, so
+    the method contest is scored on exactly what would ship.
+    """
+    cap = _runaway_cap(history)
+    out = [max(p, 0.0) for p in pred]
+    if cap > 0:
+        out = [min(p, cap) for p in out]
+    return out
+
 # ── method 1: linear + rolling blend (short series) ────────────────────────────
 def _linear_blend(series, h, weight_linear=0.6):
     slope, intercept = linreg(series)
@@ -62,11 +91,45 @@ def _linear_blend(series, h, weight_linear=0.6):
         point.append(lin * weight_linear + ra * (1 - weight_linear))
     return point, fitted
 
-# ── method 2: Holt linear trend (with optional damping) ────────────────────────
+# ── method 2: Croston's method, SBA variant (intermittent demand) ──────────────
+def _croston(series, alpha, h):
+    """Croston's method with the Syntetos-Boylan Approximation bias correction.
+
+    Designed for series that are mostly zeros with occasional demand spikes
+    (per-product units, per-customer months). Smooths demand *size* and demand
+    *interval* separately; the forecast per period is size/interval, scaled by
+    (1 - alpha/2) to remove Croston's known positive bias.
+    """
+    n = len(series)
+    fitted = [None] * n
+    z = None          # smoothed demand size
+    p = None          # smoothed demand interval
+    q = 1             # periods since last demand
+    fc_val = None
+    for t in range(n):
+        if fc_val is not None:
+            fitted[t] = fc_val
+        d = series[t]
+        if d > 0:
+            z = d if z is None else alpha * d + (1 - alpha) * z
+            p = float(q) if p is None else alpha * q + (1 - alpha) * p
+            q = 1
+            fc_val = (1 - alpha / 2.0) * z / p if p else z
+        else:
+            q += 1
+    point = [fc_val if fc_val is not None else 0.0] * h
+    return point, fitted
+
+# ── method 3: Holt linear trend (with optional damping) ────────────────────────
 def _holt(series, alpha, beta, h, phi=1.0):
     n = len(series)
     level = series[0]
-    trend = (series[1] - series[0]) if n >= 2 else 0.0
+    if n >= 2:
+        # average the first few differences instead of trusting one noisy month
+        diffs = [series[i + 1] - series[i] for i in range(min(3, n - 1))]
+        trend = _mean(diffs)
+    else:
+        trend = 0.0
     fitted = [None]
     for t in range(1, n):
         fitted.append(level + phi * trend)          # one-step-ahead forecast
@@ -80,7 +143,38 @@ def _holt(series, alpha, beta, h, phi=1.0):
         point.append(level + damp * trend)
     return point, fitted, level, trend
 
-# ── method 3/4: Holt-Winters (additive / multiplicative) ───────────────────────
+# ── method 4/5: Holt-Winters (additive / multiplicative) ───────────────────────
+def _init_season(series, m, mult):
+    """Initial seasonal factors averaged over ALL complete seasons, normalised.
+
+    Using only the first year makes the factors hostage to one season's noise;
+    averaging across seasons and renormalising (multiplicative factors mean 1,
+    additive factors sum 0) is the classical initialisation.
+    """
+    k = max(1, len(series) // m)
+    season = []
+    for i in range(m):
+        vals = []
+        for s in range(k):
+            seg = series[s * m:(s + 1) * m]
+            if len(seg) < m:
+                break
+            seg_mean = _mean(seg)
+            if mult:
+                if seg_mean > 1e-9:
+                    vals.append(seg[i] / seg_mean)
+            else:
+                vals.append(seg[i] - seg_mean)
+        season.append(_mean(vals) if vals else (1.0 if mult else 0.0))
+    if mult:
+        savg = _mean(season)
+        if savg > 1e-9:
+            season = [s_ / savg for s_ in season]
+    else:
+        adj = _mean(season)
+        season = [s_ - adj for s_ in season]
+    return season
+
 def _holt_winters(series, m, alpha, beta, gamma, h, mult, phi=1.0):
     n = len(series)
     level = _mean(series[:m])
@@ -88,12 +182,7 @@ def _holt_winters(series, m, alpha, beta, gamma, h, mult, phi=1.0):
         trend = (_mean(series[m:2 * m]) - level) / m
     else:
         trend = linreg(series)[0]
-    if mult:
-        # guard against a zero/near-zero level producing exploding seasonal factors
-        base = level if level > 1e-9 else 1.0
-        season = [(series[i] / base if base else 1.0) for i in range(m)]
-    else:
-        season = [series[i] - level for i in range(m)]
+    season = _init_season(series, m, mult)
 
     fitted = [None] * m
     L, T, S = level, trend, list(season)
@@ -124,6 +213,7 @@ _ALPHAS = [0.1, 0.3, 0.5, 0.7, 0.9]
 _BETAS = [0.05, 0.15, 0.3, 0.5]
 _GAMMAS = [0.1, 0.3, 0.5]
 _PHIS = [0.85, 0.95, 1.0]
+_CROSTON_ALPHAS = [0.05, 0.1, 0.2, 0.3]
 
 def _sse(series, fitted):
     return sum((series[t] - fitted[t]) ** 2 for t in range(len(series)) if fitted[t] is not None)
@@ -137,6 +227,15 @@ def _best_holt(series, h):
                 e = _sse(series, fit)
                 if best is None or e < best[0]:
                     best = (e, pt, fit)
+    return best[1], best[2]
+
+def _best_croston(series, h):
+    best = None
+    for a in _CROSTON_ALPHAS:
+        pt, fit = _croston(series, a, h)
+        e = _sse(series, fit)
+        if best is None or e < best[0]:
+            best = (e, pt, fit)
     return best[1], best[2]
 
 def _best_hw(series, m, h, mult):
@@ -161,16 +260,20 @@ def _best_hw(series, m, h, mult):
 def _candidates(series, m):
     """Methods that are *eligible* for this series, richest first.
 
-    The spec's length ladder decides eligibility; sparse / intermittent series
-    are pinned to the robust linear blend. The final pick among eligible
-    methods is made by out-of-sample validation (see ``_choose``), so we never
-    commit to a seasonal model that the data does not actually support well.
+    The spec's length ladder decides eligibility; intermittent series get
+    Croston's (SBA) with the linear blend as a challenger. The final pick
+    among eligible methods is made by rolling-origin validation (``_choose``),
+    so we never commit to a model the data does not actually support well.
     """
     n = len(series)
     nonzero = sum(1 for x in series if x > 0)
     zero_frac = (n - nonzero) / n if n else 1.0
 
-    if n < 6 or zero_frac >= 0.35 or nonzero < 6:
+    if n < 6:
+        return ["Linear + Rolling Avg"]
+    if zero_frac >= 0.35 or nonzero < 6:
+        if nonzero >= 3:
+            return ["Croston (SBA)", "Linear + Rolling Avg"]
         return ["Linear + Rolling Avg"]
     if n < m:
         return ["Holt Linear Trend", "Linear + Rolling Avg"]
@@ -182,32 +285,58 @@ def _select_method(series, m):
     """The spec's default ladder choice (richest eligible method)."""
     return _candidates(series, m)[0]
 
-def _fit(series, m, h, method):
+@lru_cache(maxsize=2048)
+def _fit_cached(tseries, m, h, method):
+    series = list(tseries)
     if method == "Linear + Rolling Avg":
-        return _linear_blend(series, h)
-    if method == "Holt Linear Trend":
-        return _best_holt(series, h)
-    if method == "Holt-Winters (Additive)":
-        return _best_hw(series, m, h, mult=False)
-    return _best_hw(series, m, h, mult=True)
+        pt, ft = _linear_blend(series, h)
+    elif method == "Croston (SBA)":
+        pt, ft = _best_croston(series, h)
+    elif method == "Holt Linear Trend":
+        pt, ft = _best_holt(series, h)
+    elif len(series) < m:
+        # defensive: a forced Holt-Winters on too-short history degrades to Holt
+        pt, ft = _best_holt(series, h)
+    elif method == "Holt-Winters (Additive)":
+        pt, ft = _best_hw(series, m, h, mult=False)
+    else:
+        pt, ft = _best_hw(series, m, h, mult=True)
+    return tuple(pt), tuple(ft)
+
+def _fit(series, m, h, method):
+    """Memoised fit. Returns fresh lists so callers may mutate them safely."""
+    pt, ft = _fit_cached(tuple(series), m, h, method)
+    return list(pt), list(ft)
 
 def _validation_score(series, m, method):
-    """Score a method by holding out a small tail and measuring the miss.
+    """Score a method by rolling-origin validation.
 
-    Falls back to in-sample mean squared error when the series is too short to
-    hold out a validation window for this method.
+    Up to three held-out windows, each ``vh`` months long, with origins
+    stepping back two months at a time; the score is the average absolute
+    miss across folds. A single split lets one odd month decide the contest;
+    averaging origins makes the choice stable. Predictions are floored and
+    capped exactly as the live forecast would be.
+
+    Falls back to in-sample mean squared error when the series is too short
+    to hold out any window for this method.
     """
     n = len(series)
     vh = min(6, max(2, n // 5))      # same horizon the accuracy backtest reports
     need = m if method.startswith("Holt-Winters") else 4
-    if n - vh < max(4, need):
-        _, fit = _fit(series, m, 1, method)
-        cnt = sum(1 for f in fit if f is not None)
-        return (_sse(series, fit) / cnt) if cnt else float("inf")
-    train, val = series[:-vh], series[-vh:]
-    pred, _ = _fit(train, m, vh, method)
-    pred = [max(p, 0.0) for p in pred]
-    return _mean([abs(pred[i] - val[i]) for i in range(vh)])
+    folds = []
+    for k in range(3):
+        cut = n - vh - 2 * k
+        if cut < max(4, need):
+            break
+        train, val = series[:cut], series[cut:cut + vh]
+        pred, _ = _fit(train, m, vh, method)
+        pred = _clean_preds(pred, train)
+        folds.append(_mean([abs(pred[i] - val[i]) for i in range(len(val))]))
+    if folds:
+        return _mean(folds)
+    _, fit = _fit(series, m, 1, method)
+    cnt = sum(1 for f in fit if f is not None)
+    return (_sse(series, fit) / cnt) if cnt else float("inf")
 
 def _choose(series, m, h):
     """Pick the eligible method with the best validation score, then fit it.
@@ -223,17 +352,24 @@ def _choose(series, m, h):
     return method, point, fitted
 
 # ── accuracy metrics ───────────────────────────────────────────────────────────
+_EMPTY_METRICS = {"wape": None, "mape": None, "rmse": None, "mae": None, "bias": None}
+
 def _metrics(actual, pred):
     pairs = list(zip(actual, pred))
     if not pairs:
-        return {"mape": None, "rmse": None, "mae": None, "bias": None}
+        return dict(_EMPTY_METRICS)
     errs = [p - a for a, p in pairs]
     mae = _mean([abs(e) for e in errs])
     rmse = sqrt(_mean([e ** 2 for e in errs]))
     bias = _mean(errs)
+    # WAPE (weighted absolute % error) handles zero months naturally and is the
+    # preferred score for sparse series; MAPE (which must skip zero-actual
+    # months, flattering the result) is kept for familiarity.
+    denom = sum(abs(a) for a, _ in pairs)
+    wape = (sum(abs(e) for e in errs) / denom) if denom else None
     nz = [(a, p) for a, p in pairs if a != 0]
     mape = _mean([abs(p - a) / abs(a) for a, p in nz]) if nz else None
-    return {"mape": mape, "rmse": rmse, "mae": mae, "bias": bias}
+    return {"wape": wape, "mape": mape, "rmse": rmse, "mae": mae, "bias": bias}
 
 # ── public API ─────────────────────────────────────────────────────────────────
 def smart_forecast(series, h=6, season_length=12, floor_zero=True, z=1.96):
@@ -245,10 +381,14 @@ def smart_forecast(series, h=6, season_length=12, floor_zero=True, z=1.96):
         point       [float] * h
         lower/upper [float] * h        95% confidence interval
         fitted      [float|None] * n   one-step in-sample fit
-        resid_std   float
+        resid_std   float              band std (in-sample, inflated by the
+                                       backtest/in-sample error ratio)
         confidence  'HIGH'|'MEDIUM'|'LOW'
         growth      float              implied growth (forecast vs recent actuals)
-        backtest    {mape,rmse,mae,bias}  out-of-sample holdout (may be None values)
+        backtest    {wape,mape,rmse,mae,bias,holdout,method}
+                                       honest holdout: the engine re-selects on
+                                       the training split only, so the holdout
+                                       months never influence their own score
         n           int
     """
     series = [float(x) for x in series]
@@ -259,17 +399,12 @@ def smart_forecast(series, h=6, season_length=12, floor_zero=True, z=1.96):
         zero = [0.0] * h
         return {"method": "No data", "point": zero, "lower": zero, "upper": list(zero),
                 "fitted": [], "resid_std": 0.0, "confidence": "LOW", "growth": 0.0,
-                "backtest": {"mape": None, "rmse": None, "mae": None, "bias": None}, "n": 0}
+                "backtest": dict(_EMPTY_METRICS, holdout=0, method="No data"), "n": 0}
 
     method, point, fitted = _choose(series, m, h)
 
-    # Guard against runaway extrapolation. No forecast period should exceed a
-    # generous multiple of what the series has actually shown; this keeps a
-    # multiplicative model from compounding into implausible numbers on noisy
-    # or near-intermittent data while leaving healthy trends untouched.
-    hist_max = max(series) if series else 0.0
-    recent_mean = rolling_avg(series, 3)
-    cap = max(hist_max * 2.5, recent_mean * 3.0)
+    # Guard against runaway extrapolation (same guard the validation applied).
+    cap = _runaway_cap(series)
     if cap > 0:
         point = [min(p, cap) for p in point]
 
@@ -277,10 +412,23 @@ def smart_forecast(series, h=6, season_length=12, floor_zero=True, z=1.96):
     resid = [series[t] - fitted[t] for t in range(n) if fitted[t] is not None]
     resid_std = _std(resid) if len(resid) >= 2 else (abs(_mean(resid)) if resid else 0.0)
 
+    # Honest backtest: self-selects on the training split (nested validation),
+    # so the reported accuracy is what the engine would genuinely have achieved.
+    bt = backtest(series, season_length)
+
+    # In-sample residuals understate real error (the model was fitted to them).
+    # Widen the band by the measured out-of-sample/in-sample error ratio,
+    # clamped so a tiny holdout can't blow the interval up absurdly.
+    insample_rmse = sqrt(_mean([r * r for r in resid])) if resid else 0.0
+    if bt["rmse"] and insample_rmse > 1e-9:
+        band_std = resid_std * min(max(bt["rmse"] / insample_rmse, 1.0), 3.0)
+    else:
+        band_std = resid_std
+
     # confidence interval widens with horizon
     lower, upper = [], []
     for k in range(h):
-        spread = z * resid_std * sqrt(k + 1)
+        spread = z * band_std * sqrt(k + 1)
         lo, hi = point[k] - spread, point[k] + spread
         if floor_zero:
             lo = max(lo, 0.0)
@@ -290,48 +438,49 @@ def smart_forecast(series, h=6, season_length=12, floor_zero=True, z=1.96):
         lower.append(lo)
         upper.append(hi)
 
-    bt = backtest(series, season_length, method=method)
-    confidence = confidence_label(n, m, bt["mape"])
+    err = bt["wape"] if bt.get("wape") is not None else bt["mape"]
+    confidence = confidence_label(n, m, err)
 
     recent = rolling_avg(series, 3)
     growth = (_mean(point) - recent) / recent if recent else 0.0
 
     return {"method": method, "point": point, "lower": lower, "upper": upper,
-            "fitted": fitted, "resid_std": resid_std, "confidence": confidence,
+            "fitted": fitted, "resid_std": band_std, "confidence": confidence,
             "growth": growth, "backtest": bt, "n": n}
 
 def backtest(series, season_length=12, min_train=4, method=None):
     """Hold out the tail of the series, forecast it from the head, and score.
 
-    If ``method`` is given, that method is forced (so the reported accuracy
-    matches the method actually shipped in the live forecast); otherwise the
-    engine self-selects on the training split.
+    By default the engine re-selects the method on the training split only
+    (nested validation) — the holdout months never influence which model is
+    scored on them, so the metrics are honest out-of-sample numbers. Passing
+    ``method`` forces a specific method instead (legacy behaviour).
     """
     series = [float(x) for x in series]
     n = len(series)
     test_h = min(6, max(1, n // 5))
     if n - test_h < min_train:
-        return {"mape": None, "rmse": None, "mae": None, "bias": None,
-                "holdout": 0, "method": method or _select_method(series, season_length)}
+        return dict(_EMPTY_METRICS, holdout=0,
+                    method=method or _select_method(series, season_length))
     train, actual = series[:-test_h], series[-test_h:]
     if method:
         pred, _ = _fit(train, season_length, test_h, method)
         used = method
     else:
         used, pred, _ = _choose(train, season_length, test_h)
-    out = _metrics(actual, [max(p, 0.0) for p in pred])
+    out = _metrics(actual, _clean_preds(pred, train))
     out["holdout"] = test_h
     out["method"] = used
     return out
 
-def confidence_label(n, m, mape):
-    """Combine data sufficiency with measured accuracy."""
-    if mape is not None:
-        if n >= m and mape <= 0.15:
+def confidence_label(n, m, err):
+    """Combine data sufficiency with measured accuracy (WAPE preferred)."""
+    if err is not None:
+        if n >= m and err <= 0.15:
             return "HIGH"
-        if n >= 6 and mape <= 0.30:
+        if n >= 6 and err <= 0.30:
             return "MEDIUM"
-        if mape <= 0.20 and n >= 4:
+        if err <= 0.20 and n >= 4:
             return "MEDIUM"
         return "LOW"
     # no holdout possible -> fall back to length only

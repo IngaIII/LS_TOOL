@@ -28,7 +28,7 @@ from exports.excel import (
     GREEN_F, GREEN_T, AMBER_F, AMBER_T, RED_F, RED_T, PURPLE_F, PURPLE_T, GRAY_F,
     ZAR_FMT, PCT_FMT, NUM_FMT,
     hdr, section, paint, zar, auto_width, zebra, bold_row,
-    MONTH_NAMES, mlabel, add_months,
+    MONTH_NAMES, mlabel, add_months, month_range,
 )
 from exports import forecasting as fc
 
@@ -63,13 +63,15 @@ def _title(ws, text, sub=None):
     ws.append([])
 
 
-def _series_for_product(pd, months_sorted):
-    return [pd["by_month"].get(k, 0) for k in months_sorted]
+def _series_for_product(ctx, pname, pd):
+    """Monthly unit series over the forecast calendar (revenue orders only)."""
+    by_month = ctx.get("prod_fc_month", {}).get(pname, pd["by_month"])
+    return [by_month.get(k, 0) for k in ctx["months_sorted"]]
 
 
-def _customer_monthly(active_orders):
+def _customer_monthly(orders):
     cm = defaultdict(lambda: defaultdict(float))
-    for o in active_orders:
+    for o in orders:
         cm[o.customer.name][o.order_date.strftime("%Y-%m")] += o.total_zar
     return cm
 
@@ -101,10 +103,11 @@ def build_revenue_forecast(wb, ctx):
 
     r = fc.smart_forecast(rev, h=H, season_length=SEASON)
     bt = r["backtest"]
-    mape_txt = "n/a" if bt["mape"] is None else f"{bt['mape']:.1%}"
+    err = bt.get("wape") if bt.get("wape") is not None else bt["mape"]
+    err_txt = "n/a" if err is None else f"{err:.1%}"
     _title(ws, "REVENUE FORECAST",
            f"Method: {r['method']} · Confidence: {r['confidence']} · "
-           f"Backtest MAPE: {mape_txt} · History: {r['n']} months · "
+           f"Backtest WAPE: {err_txt} · History: {r['n']} months · "
            f"Intervals are 95% confidence. Statistical estimates — review against the sales pipeline.")
 
     # Recent actuals vs model fit
@@ -200,44 +203,54 @@ def build_forecast_accuracy(wb, ctx):
         ("TLB Revenue", tlb_rev, ZAR_FMT),
     ]
 
-    head = ["Series", "Method", "Holdout (mo)", "MAPE", "RMSE", "MAE", "Bias", "Rating"]
+    head = ["Series", "Method", "Holdout (mo)", "WAPE", "MAPE", "RMSE", "MAE", "Bias", "Rating"]
     ws.append(head); hdr(ws, ws.max_row, len(head))
     for name, s, fmt in series_set:
         if s:
             r = fc.smart_forecast(s, h=H, season_length=SEASON)
             bt = r["backtest"]
             method = r["method"]
+            # the honest backtest re-selects on the training split; note when
+            # it landed on a different method than the shipped forecast
+            if bt.get("method") and bt["method"] != method:
+                method = f"{method} (backtest used {bt['method']})"
         else:
-            bt = {"mape": None, "rmse": None, "mae": None, "bias": None, "holdout": 0}
+            bt = {"wape": None, "mape": None, "rmse": None, "mae": None,
+                  "bias": None, "holdout": 0}
             method = "No data"
         rr = ws.max_row + 1
-        mape = bt["mape"]
-        if mape is None:
+        wape, mape = bt.get("wape"), bt["mape"]
+        err = wape if wape is not None else mape      # WAPE rates the model
+        if err is None:
             rating, rf, rt = "Insufficient data", GRAY_F, "666666"
-        elif mape <= 0.10:
+        elif err <= 0.10:
             rating, rf, rt = "Excellent", GREEN_F, GREEN_T
-        elif mape <= 0.20:
+        elif err <= 0.20:
             rating, rf, rt = "Good", GREEN_F, GREEN_T
-        elif mape <= 0.30:
+        elif err <= 0.30:
             rating, rf, rt = "Fair", AMBER_F, AMBER_T
         else:
             rating, rf, rt = "Weak — use with care", RED_F, RED_T
         ws.append([name, method, bt.get("holdout", 0),
+                   wape if wape is not None else "—",
                    mape if mape is not None else "—",
                    round(bt["rmse"], 2) if bt["rmse"] is not None else "—",
                    round(bt["mae"], 2) if bt["mae"] is not None else "—",
                    round(bt["bias"], 2) if bt["bias"] is not None else "—",
                    rating])
-        if mape is not None:
+        if wape is not None:
             ws.cell(rr, 4).number_format = PCT_FMT
+        if mape is not None:
+            ws.cell(rr, 5).number_format = PCT_FMT
         if fmt == ZAR_FMT:
-            zar(ws, rr, [5, 6, 7])
-        paint(ws, rr, 8, rf, rt, bold=True)
+            zar(ws, rr, [6, 7, 8])
+        paint(ws, rr, 9, rf, rt, bold=True)
     ws.append([])
 
     section(ws, "HOW TO READ THESE METRICS")
     legend = [
-        ("MAPE", "Mean Absolute % Error — average size of the miss as a % of actual. Lower is better; under 10% is excellent."),
+        ("WAPE", "Weighted Absolute % Error — total miss as a % of total actual. Handles zero months fairly, so it is the score used for the rating. Lower is better; under 10% is excellent."),
+        ("MAPE", "Mean Absolute % Error — average size of the miss as a % of actual. Skips zero-actual months, which can flatter sparse series."),
         ("RMSE", "Root Mean Squared Error — like the average miss but punishes big misses more. In the same units as the series."),
         ("MAE", "Mean Absolute Error — average miss, in the same units as the series."),
         ("Bias", "Average signed error. Positive = the model tends to over-forecast; negative = under-forecast; near zero is ideal."),
@@ -354,7 +367,7 @@ def build_product_forecasting(wb, ctx, top=25):
 
     results = {}
     for pname, pd in prod_sorted[:top]:
-        series = _series_for_product(pd, ms)
+        series = _series_for_product(ctx, pname, pd)
         r = fc.smart_forecast(series, h=3, season_length=SEASON)
         results[pname] = r
         avg = sum(series) / n_months if n_months else 0
@@ -416,7 +429,7 @@ def build_inventory_planning(wb, ctx, top=25):
     data_start = note_row + 1
 
     for pname, pd in prod_sorted[:top]:
-        series = _series_for_product(pd, ms)
+        series = _series_for_product(ctx, pname, pd)
         avg_m = sum(series) / n_months if n_months else 0
         std_m = fc._std(series)
         r = product_results.get(pname) or fc.smart_forecast(series, h=1, season_length=SEASON)
@@ -514,7 +527,7 @@ def build_customer_forecasting(wb, ctx, top=20):
            "based on each customer's own monthly order history.")
 
     ms = ctx["months_sorted"]; ly, lm = ctx["ly"], ctx["lm"]
-    cm = _customer_monthly(ctx["active_orders"])
+    cm = _customer_monthly(ctx.get("fc_orders", ctx["active_orders"]))
     cust_sorted = ctx["cust_sorted"]
 
     f1, f2, f3 = _future_labels(ly, lm, 3)
@@ -555,8 +568,11 @@ def build_delivery_forecasting(wb, ctx):
 
     deliveries = ctx["deliveries"]; ly, lm = ctx["ly"], ctx["lm"]
     dm = _delivery_monthly(deliveries)
-    dkeys = sorted(dm.keys())
-    series = [dm[k]["n"] for k in dkeys]
+    # Contiguous calendar, partial current month excluded (same hygiene as revenue)
+    current_key = ctx["today"].strftime("%Y-%m")
+    done = sorted(k for k in dm.keys() if k < current_key)
+    dkeys = month_range(done[0], done[-1]) if done else []
+    series = [dm[k]["n"] if k in dm else 0 for k in dkeys]
     r = fc.smart_forecast(series, h=H, season_length=SEASON)
 
     # fleet snapshot

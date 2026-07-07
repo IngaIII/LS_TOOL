@@ -97,6 +97,24 @@ def add_months(year, month, n=1):
     total = (year - 1) * 12 + (month - 1) + n
     return total // 12 + 1, total % 12 + 1
 
+def month_range(first_key, last_key):
+    """All 'YYYY-MM' keys from first_key to last_key inclusive.
+
+    Forecast series must be contiguous in calendar time: a month with no sales
+    is a real observation of zero demand, not a missing point. Skipping it
+    (as a bare sorted(dict.keys()) does) distorts trends and misaligns the
+    12-month seasonal cycle.
+    """
+    if not first_key or not last_key or first_key > last_key:
+        return []
+    y, m = int(first_key[:4]), int(first_key[5:7])
+    ly_, lm_ = int(last_key[:4]), int(last_key[5:7])
+    out = []
+    while (y, m) <= (ly_, lm_):
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = add_months(y, m, 1)
+    return out
+
 MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
 def mlabel(year, month):
@@ -981,41 +999,68 @@ def generate_full_report(db) -> BytesIO:
     # ══════════════════════════════════════════════════════════════════════════
     from exports.forecast_sheets import build_enterprise_forecasting
 
-    # ── Partial-month hygiene ───────────────────────────────────────────────
-    # The current calendar month is still in progress, so its bucket is
-    # incomplete and would drag every trend/forecast down (and inflate backtest
-    # error). Exclude it from the forecast *input* so projections start with the
-    # current month. Operational sheets keep the partial month — only the
-    # forecasting suite uses the trimmed series.
+    # ── Forecast input hygiene ────────────────────────────────────────────────
+    # The forecast series differ from the operational buckets in three ways:
+    #   1. Only real revenue counts: confirmed/dispatched/delivered orders.
+    #      Unconverted quotations and on-hold orders would inflate history.
+    #   2. The calendar is contiguous: months with no sales are zeros, not
+    #      missing points (gaps distort trends and misalign seasonality).
+    #   3. The current, still-incomplete month is always excluded — the engine
+    #      has a dedicated short-series path, so even little history is safer
+    #      than training on a partial month.
+    # Operational sheets keep the raw buckets; only the forecasting suite uses
+    # the cleaned series.
+    REVENUE_FC_STATUSES = {"confirmed", "dispatched", "delivered"}
     current_key = today.strftime("%Y-%m")
-    complete_months = [k for k in months_sorted if k < current_key]
-    if len(complete_months) >= 4:                 # keep enough history to model
-        fc_months = complete_months
-    else:
-        fc_months = months_sorted
+    fc_orders = [o for o in active if o.status in REVENUE_FC_STATUSES]
+
+    fc_monthly = {}
+    fc_prod_month = defaultdict(lambda: defaultdict(int))
+    for o in fc_orders:
+        k = o.order_date.strftime("%Y-%m")
+        if k >= current_key:
+            continue
+        if k not in fc_monthly:
+            fc_monthly[k] = {"orders": 0, "revenue": 0.0, "items": 0,
+                             "yr": o.order_date.year, "mo": o.order_date.month}
+        fc_monthly[k]["orders"]  += 1
+        fc_monthly[k]["revenue"] += o.total_zar
+        fc_monthly[k]["items"]   += sum(i.quantity for i in o.items)
+        for item in o.items:
+            fc_prod_month[item.product.name][k] += item.quantity
+
+    fc_keys = sorted(fc_monthly.keys())
+    fc_months = month_range(fc_keys[0], fc_keys[-1]) if fc_keys else []
+    for k in fc_months:                       # zero-fill calendar gaps
+        if k not in fc_monthly:
+            fc_monthly[k] = {"orders": 0, "revenue": 0.0, "items": 0,
+                             "yr": int(k[:4]), "mo": int(k[5:7])}
 
     if fc_months:
-        _ly, _lm = monthly[fc_months[-1]]["yr"], monthly[fc_months[-1]]["mo"]
+        _ly, _lm = fc_monthly[fc_months[-1]]["yr"], fc_monthly[fc_months[-1]]["mo"]
     else:
         _ly, _lm = today.year, today.month
 
-    fc_rev_series = [monthly[k]["revenue"] for k in fc_months]
+    fc_rev_series = [fc_monthly[k]["revenue"] for k in fc_months]
 
-    # TLB forecast input trimmed the same way
-    fc_tlb_keys   = [k for k in tlb_keys if k < current_key] or tlb_keys
-    fc_tlb_rev_s  = [tlb_m[k]["rev"] for k in fc_tlb_keys]
+    # TLB forecast input: same treatment (gap-filled, partial month excluded)
+    fc_tlb_done = sorted(k for k in tlb_keys if k < current_key)
+    fc_tlb_keys = month_range(fc_tlb_done[0], fc_tlb_done[-1]) if fc_tlb_done else []
+    fc_tlb_rev_s = [tlb_m[k]["rev"] if k in tlb_m else 0.0 for k in fc_tlb_keys]
     tlb_result = _fc.smart_forecast(fc_tlb_rev_s, h=6) if fc_tlb_rev_s else None
 
     ctx = {
         "today": today,
         "months_sorted": fc_months,
-        "monthly": monthly,
+        "monthly": fc_monthly,
         "rev_series": fc_rev_series,
         "prod_sorted": prod_sorted,
+        "prod_fc_month": fc_prod_month,       # product -> month -> qty (revenue orders only)
         "cust_sorted": cust_sorted,
         "deliveries": deliveries,
         "tlbs": tlbs,
         "active_orders": active,
+        "fc_orders": fc_orders,               # revenue-status orders for per-customer series
         "total_rev": total_rev,
         "outstanding": total_rev - total_paid,
         "n_months": max(len(fc_months), 1),

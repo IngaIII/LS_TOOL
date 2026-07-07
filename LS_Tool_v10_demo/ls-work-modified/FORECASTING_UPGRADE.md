@@ -63,6 +63,56 @@ defaults) rather than invented.
 Corrected a pre-existing latent bug where a "= Stable" trend label was parsed by
 Excel as a formula (producing a `#NAME?` error); it is now "→ Stable".
 
+## Accuracy & robustness upgrade (July 2026)
+
+A second pass focused on data correctness and honest accuracy reporting:
+
+**Data fed to the engine**
+- **Contiguous calendar.** Months with no sales are now real zero observations
+  instead of silently skipped points (`month_range` in `excel.py`). Gaps were
+  distorting trends and misaligning the 12-month seasonal cycle.
+- **Only real revenue trains the model.** Forecast inputs use
+  confirmed/dispatched/delivered orders; unconverted quotations and on-hold
+  orders no longer inflate history (matches the API's revenue definition).
+- **The partial current month is always excluded** (previously only when ≥4
+  complete months existed). Applied to revenue, product, customer, TLB and
+  delivery series alike.
+
+**Honest accuracy**
+- **Nested backtest.** The engine re-selects its method on the training split
+  only, so the holdout months never influence which model is scored on them.
+  Previously the method chosen using the tail was scored on that same tail,
+  biasing MAPE low. The Accuracy sheet notes when the backtest self-selected
+  a different method than the shipped forecast.
+- **WAPE added and used for ratings.** MAPE must skip zero-actual months,
+  flattering sparse series; WAPE (total miss ÷ total actual) handles zeros
+  fairly and now drives the Excellent/Good/Fair/Weak rating and the
+  confidence label. MAPE is still shown.
+- **Wider, truthful confidence bands.** The 95% band is inflated by the ratio
+  of measured out-of-sample RMSE to in-sample RMSE (clamped ×1–×3), since
+  in-sample residuals understate real error.
+
+**Model quality**
+- **Rolling-origin validation.** Method selection now averages the miss over
+  up to three held-out windows instead of one split, so a single odd month
+  cannot flip the choice. Validation predictions are floored/capped exactly
+  like the live forecast.
+- **Croston's method (SBA variant)** for intermittent series (mostly-zero
+  product/customer months) — smooths demand size and interval separately with
+  the Syntetos-Boylan bias correction, replacing the linear blend where it
+  validates better.
+- **Classical Holt-Winters initialisation.** Seasonal factors are averaged
+  across all complete seasons and normalised (multiplicative mean 1, additive
+  sum 0) instead of trusting the first year; Holt's initial trend uses the
+  mean of the first few differences instead of one noisy month.
+- **Memoised fits** — repeated forecasts of the same series across sheets are
+  now free, and results are copied out so cached values can never be mutated.
+
+**Tests** — `backend/test_forecasting.py` (11 deterministic tests: trend
+recovery, seasonal backtest quality, zeros, intermittent/Croston, runaway cap,
+WAPE maths, nested backtest, band monotonicity, cache purity, month ranges).
+Run with `python test_forecasting.py` or pytest.
+
 ## Notes
 
 - No new dependencies — the engine is pure Python (stdlib only).
